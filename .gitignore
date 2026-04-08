@@ -18,6 +18,9 @@ env/
 .env.*
 !.env.example
 
+# uv lockfile (not used in this project)
+uv.lock
+
 # IDE / OS
 .vscode/
 .idea/
