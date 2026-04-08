@@ -139,3 +139,18 @@ curl -X POST http://127.0.0.1:8000/api/llm/chat \
 ## 8. License
 
 本项目使用 Apache-2.0 许可证，详见 `LICENSE`。
+
+## 9. CI 与 PR 合并策略
+
+项目已提供 GitHub Actions 工作流：
+
+- `.github/workflows/ci.yml`：在 PR 和 `main` push 时自动执行 Ruff 格式检查、Ruff lint/安全规则检查、语法检查、基础导入检查、测试（若存在 `tests/`）
+- `.github/CODEOWNERS`：指定代码所有者审阅（默认 `@wsmxd`）
+
+建议在仓库 `Settings -> Branches -> Branch protection rules` 中启用：
+
+- `Require a pull request before merging`
+- `Require status checks to pass before merging`（勾选 `CI / Quality and Tests (Python 3.14)`）
+- `Require review from Code Owners`
+
+这样可实现：PR 自动审查测试通过后，再由所有者决定是否合并。
