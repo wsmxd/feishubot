@@ -69,6 +69,18 @@ def _build_parser() -> argparse.ArgumentParser:
         "--yes", action="store_true", help="Skip overwrite confirmation if env file exists"
     )
 
+    model_parser = subparsers.add_parser(
+        "model", help="List configured models and switch active model"
+    )
+    model_parser.add_argument(
+        "--env-file", default=".env", help="Path to the environment file to update"
+    )
+    model_parser.add_argument(
+        "--use",
+        default=None,
+        help="Switch directly to a model name without interactive prompt",
+    )
+
     return parser
 
 
@@ -121,16 +133,40 @@ def _load_env_file(path: Path) -> dict[str, str]:
         return {}
 
     values: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
+    lines = path.read_text(encoding="utf-8").splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
         stripped = line.strip()
         if not stripped or stripped.startswith("#") or "=" not in stripped:
+            i += 1
             continue
+
         key, value = stripped.split("=", 1)
         key = key.strip()
         value = value.strip()
+
+        if value.startswith(('"', "'")):
+            quote = value[0]
+            if not (len(value) >= 2 and value.endswith(quote)):
+                collected = [value]
+                j = i + 1
+                while j < len(lines):
+                    collected.append(lines[j])
+                    if lines[j].rstrip().endswith(quote):
+                        break
+                    j += 1
+                value = "\n".join(collected)
+                i = j
+
         if value.startswith('"') and value.endswith('"') and len(value) >= 2:
             value = value[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+        elif value.startswith("'") and value.endswith("'") and len(value) >= 2:
+            value = value[1:-1]
+
         values[key] = value
+        i += 1
+
     return values
 
 
@@ -140,6 +176,12 @@ def _format_env_value(value: str) -> str:
         return value
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
     return f'"{escaped}"'
+
+
+def _format_env_assignment(key: str, value: str) -> str:
+    if key == "LLM_MODELS_JSON" and "\n" in value:
+        return f"{key}='{value}'"
+    return f"{key}={_format_env_value(value)}"
 
 
 def _write_env_file(path: Path, values: dict[str, str]) -> None:
@@ -161,7 +203,7 @@ def _write_env_file(path: Path, values: dict[str, str]) -> None:
         "LLM_MODELS_JSON",
     ]
 
-    lines = [f"{key}={_format_env_value(values.get(key, ''))}" for key in keys_in_order]
+    lines = [_format_env_assignment(key, values.get(key, "")) for key in keys_in_order]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -263,7 +305,7 @@ def _run_setup(args: argparse.Namespace) -> None:
             "system_prompt": values["LLM_SYSTEM_PROMPT"],
         }
         values["LLM_ACTIVE_MODEL"] = selected_preset_key
-        values["LLM_MODELS_JSON"] = json.dumps(models, ensure_ascii=True)
+        values["LLM_MODELS_JSON"] = json.dumps(models, ensure_ascii=True, indent=2)
 
         print("Applied model preset:")
         print(f"  provider: {selected_preset_key}")
@@ -283,6 +325,62 @@ def _run_setup(args: argparse.Namespace) -> None:
     print("Next steps:")
     print("  1) Start chat: feishubot chat")
     print("  2) Start gateway: feishubot gateway --reload")
+
+
+def _run_model_switch(args: argparse.Namespace) -> None:
+    env_path = Path(args.env_file).expanduser().resolve()
+    current = _load_env_file(env_path)
+    models = _parse_models_json(current.get("LLM_MODELS_JSON", ""))
+
+    if not models:
+        print("No models found in LLM_MODELS_JSON. Run 'feishubot setup' first.")
+        return
+
+    model_names = list(models.keys())
+    active = current.get("LLM_ACTIVE_MODEL", "")
+    if active not in models:
+        active = model_names[0]
+
+    print(f"Target env file: {env_path}")
+    print("Available models:")
+    for idx, name in enumerate(model_names, start=1):
+        config = models[name]
+        model_id = config.get("model", "")
+        marker = " (active)" if name == active else ""
+        print(f"  {idx}) {name} -> {model_id}{marker}")
+
+    selected_name = args.use
+    if selected_name is None:
+        default_index = model_names.index(active) + 1
+        selected_index = _prompt_choice(
+            "Choose active model",
+            options=[(str(i), n) for i, n in enumerate(model_names, start=1)],
+            default_key=str(default_index),
+        )
+        selected_name = model_names[int(selected_index) - 1]
+
+    if selected_name not in models:
+        print(f"Model not found: {selected_name}")
+        print("Use one of:", ", ".join(model_names))
+        return
+
+    selected_config = models[selected_name]
+    current["LLM_ACTIVE_MODEL"] = selected_name
+    current["LLM_PROVIDER"] = selected_config.get("provider", "openai_compatible")
+    current["LLM_BASE_URL"] = selected_config.get("base_url", "")
+    current["LLM_API_KEY"] = selected_config.get("api_key", "")
+    current["LLM_MODEL"] = selected_config.get("model", "")
+    current["LLM_CHAT_PATH"] = selected_config.get("chat_path", "/v1/chat/completions")
+    current["LLM_TIMEOUT_SECONDS"] = selected_config.get("timeout_seconds", "60")
+    current["LLM_SYSTEM_PROMPT"] = selected_config.get(
+        "system_prompt", "You are a helpful assistant."
+    )
+    current["LLM_MODELS_JSON"] = json.dumps(models, ensure_ascii=True, indent=2)
+
+    _write_env_file(env_path, current)
+
+    print(f"Active model switched to: {selected_name}")
+    print("Restart 'feishubot chat' or gateway to apply the new model.")
 
 
 async def _chat_loop(user_id: str, system_prompt: str | None) -> None:
@@ -361,6 +459,10 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "setup":
         _run_setup(args)
+        return
+
+    if args.command == "model":
+        _run_model_switch(args)
         return
 
     parser.print_help()
