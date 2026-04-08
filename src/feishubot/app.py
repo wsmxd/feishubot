@@ -19,20 +19,20 @@ feishu_client = FeishuClient(
 
 
 def get_llm_client() -> LLMClient:
-    if settings.llm_provider == "openai_compatible":
+    active = settings.active_llm_config()
+
+    if active.provider == "openai_compatible":
         return OpenAICompatibleLLMClient(
-            base_url=settings.llm_base_url,
-            api_key=settings.llm_api_key,
-            model=settings.llm_model,
-            chat_path=settings.llm_chat_path,
-            timeout_seconds=settings.llm_timeout_seconds,
-            default_system_prompt=settings.llm_system_prompt,
+            base_url=active.base_url,
+            api_key=active.api_key,
+            model=active.model,
+            chat_path=active.chat_path,
+            timeout_seconds=active.timeout_seconds,
+            default_system_prompt=active.system_prompt,
         )
-    if settings.llm_provider == "echo":
+    if active.provider == "echo":
         return EchoLLMClient()
-    raise HTTPException(
-        status_code=500, detail=f"unsupported LLM provider: {settings.llm_provider}"
-    )
+    raise HTTPException(status_code=500, detail=f"unsupported LLM provider: {active.provider}")
 
 
 class ChatRequest(BaseModel):
@@ -54,6 +54,7 @@ async def healthz() -> dict[str, str]:
 
 @app.post("/api/llm/chat", response_model=ChatResponse)
 async def chat_with_llm(payload: ChatRequest) -> ChatResponse:
+    active = settings.active_llm_config()
     llm_client = get_llm_client()
 
     if isinstance(llm_client, OpenAICompatibleLLMClient) and payload.system_prompt:
@@ -66,8 +67,8 @@ async def chat_with_llm(payload: ChatRequest) -> ChatResponse:
         reply = await llm_client.generate_reply(prompt=payload.message, user_id=payload.user_id)
 
     return ChatResponse(
-        provider=settings.llm_provider,
-        model=settings.llm_model,
+        provider=active.provider,
+        model=active.model,
         reply=reply,
     )
 

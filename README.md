@@ -69,7 +69,7 @@ feishubot setup
 
 会进入交互式向导，快速选择 LLM 提供商（`echo` / `openai_compatible`）并写入 `.env`。
 当前内置大模型预设：`qwen`、`kimi`、`deepseek`。
-该向导默认只配置大模型参数，选择后只需输入 API Key 即可使用，无需手动填写端点。
+该向导会写入 `LLM_MODELS_JSON` 和 `LLM_ACTIVE_MODEL`，用于维护多个模型并快速切换。
 
 ## 3. 先在终端跑通对话
 
@@ -95,12 +95,19 @@ feishubot-chat --user-id demo-user
 
 ## 4. 再调通 HTTP 大模型接口
 
-1. 在 `.env` 中配置：
+1. 在 `.env` 中配置（单模型或多模型二选一）：
 
 - `LLM_PROVIDER=openai_compatible`
 - `LLM_BASE_URL=https://api.openai.com`（或你的网关地址）
 - `LLM_API_KEY=<你的密钥>`
 - `LLM_MODEL=<你的模型名>`
+
+多模型模式（推荐）：
+
+- `LLM_ACTIVE_MODEL=qwen`
+- `LLM_MODELS_JSON={...}`（包含多个模型的 `base_url` / `api_key` / `model`）
+
+切换模型时只需修改 `LLM_ACTIVE_MODEL`，然后重启 `feishubot chat` 或 gateway 进程。
 
 2. 调用接口测试：
 

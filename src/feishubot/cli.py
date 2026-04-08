@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -150,16 +151,38 @@ def _write_env_file(path: Path, values: dict[str, str]) -> None:
         "FEISHU_VERIFICATION_TOKEN",
         "FEISHU_ENCRYPT_KEY",
         "LLM_PROVIDER",
+        "LLM_ACTIVE_MODEL",
         "LLM_BASE_URL",
         "LLM_API_KEY",
         "LLM_MODEL",
         "LLM_CHAT_PATH",
         "LLM_TIMEOUT_SECONDS",
         "LLM_SYSTEM_PROMPT",
+        "LLM_MODELS_JSON",
     ]
 
     lines = [f"{key}={_format_env_value(values.get(key, ''))}" for key in keys_in_order]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _parse_models_json(raw: str) -> dict[str, dict[str, str]]:
+    value = raw.strip()
+    if not value:
+        return {}
+
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+
+    if not isinstance(parsed, dict):
+        return {}
+
+    models: dict[str, dict[str, str]] = {}
+    for name, config in parsed.items():
+        if isinstance(name, str) and isinstance(config, dict):
+            models[name] = {k: str(v) for k, v in config.items()}
+    return models
 
 
 def _run_setup(args: argparse.Namespace) -> None:
@@ -205,12 +228,14 @@ def _run_setup(args: argparse.Namespace) -> None:
         "FEISHU_VERIFICATION_TOKEN": current.get("FEISHU_VERIFICATION_TOKEN", ""),
         "FEISHU_ENCRYPT_KEY": current.get("FEISHU_ENCRYPT_KEY", ""),
         "LLM_PROVIDER": provider_value,
+        "LLM_ACTIVE_MODEL": current.get("LLM_ACTIVE_MODEL", ""),
         "LLM_BASE_URL": current.get("LLM_BASE_URL", ""),
         "LLM_API_KEY": "",
         "LLM_MODEL": current.get("LLM_MODEL", ""),
         "LLM_CHAT_PATH": current.get("LLM_CHAT_PATH", "/v1/chat/completions"),
         "LLM_TIMEOUT_SECONDS": current.get("LLM_TIMEOUT_SECONDS", "60"),
         "LLM_SYSTEM_PROMPT": current.get("LLM_SYSTEM_PROMPT", "You are a helpful assistant."),
+        "LLM_MODELS_JSON": current.get("LLM_MODELS_JSON", ""),
     }
 
     if provider_value == "openai_compatible":
@@ -227,11 +252,29 @@ def _run_setup(args: argparse.Namespace) -> None:
             current.get("LLM_SYSTEM_PROMPT", "You are a helpful assistant."),
         )
 
+        models = _parse_models_json(current.get("LLM_MODELS_JSON", ""))
+        models[selected_preset_key] = {
+            "provider": "openai_compatible",
+            "base_url": values["LLM_BASE_URL"],
+            "api_key": values["LLM_API_KEY"],
+            "model": values["LLM_MODEL"],
+            "chat_path": values["LLM_CHAT_PATH"],
+            "timeout_seconds": values["LLM_TIMEOUT_SECONDS"],
+            "system_prompt": values["LLM_SYSTEM_PROMPT"],
+        }
+        values["LLM_ACTIVE_MODEL"] = selected_preset_key
+        values["LLM_MODELS_JSON"] = json.dumps(models, ensure_ascii=True)
+
         print("Applied model preset:")
         print(f"  provider: {selected_preset_key}")
         print(f"  base_url: {values['LLM_BASE_URL']}")
         print(f"  model: {values['LLM_MODEL']}")
         print(f"  chat_path: {values['LLM_CHAT_PATH']}")
+        print(f"  active_model: {values['LLM_ACTIVE_MODEL']}")
+
+    if provider_value == "echo":
+        values["LLM_ACTIVE_MODEL"] = ""
+        values["LLM_MODELS_JSON"] = ""
 
     env_path.parent.mkdir(parents=True, exist_ok=True)
     _write_env_file(env_path, values)
