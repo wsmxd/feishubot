@@ -44,7 +44,9 @@ class OpenAICompatibleLLMClient(LLMClient):
         self._default_system_prompt = default_system_prompt
 
     async def generate_reply(self, prompt: str, user_id: str | None = None) -> str:
-        return await self.generate_reply_with_system_prompt(prompt=prompt, system_prompt=self._default_system_prompt, user_id=user_id)
+        return await self.generate_reply_with_system_prompt(
+            prompt=prompt, system_prompt=self._default_system_prompt, user_id=user_id
+        )
 
     async def generate_reply_with_system_prompt(
         self,

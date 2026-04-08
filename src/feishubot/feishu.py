@@ -38,7 +38,9 @@ class FeishuClient:
             return self._tenant_access_token
         return await self._refresh_tenant_access_token()
 
-    async def send_text_message(self, receive_id: str, text: str, receive_id_type: str = "open_id") -> dict[str, Any]:
+    async def send_text_message(
+        self, receive_id: str, text: str, receive_id_type: str = "open_id"
+    ) -> dict[str, Any]:
         token = await self.get_tenant_access_token()
         url = "https://open.feishu.cn/open-apis/im/v1/messages"
         headers = {"Authorization": f"Bearer {token}"}
