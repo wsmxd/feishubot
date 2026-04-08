@@ -1,7 +1,8 @@
 # FeishuBot
 
-一个专注于飞书生态的 Python Bot 项目骨架，当前阶段先完成大模型接入：
+一个专注于飞书生态的 Python Bot 项目骨架，建议按「先终端、后飞书」顺序推进：
 
+- 先在终端完成多轮对话验证
 - 可直接调用大模型接口（`/api/llm/chat`）
 - 内置 OpenAI 兼容协议客户端（也可切回 `echo`）
 - 飞书 webhook 保留为后续对接能力
@@ -44,13 +45,35 @@ pip install -e .
 cp .env.example .env
 ```
 
-4. 启动服务：
+4. 启动网关服务：
 
 ```bash
-uvicorn feishubot.main:app --reload --host 0.0.0.0 --port 8000
+feishubot gateway --reload --host 0.0.0.0 --port 8000
 ```
 
-## 3. 先调通大模型
+## 3. 先在终端跑通对话
+
+配置好 `.env` 后可直接进入终端对话：
+
+```bash
+feishubot chat
+```
+
+可选参数：
+
+```bash
+feishubot chat --user-id demo-user --system-prompt "你是一个简洁的助手"
+```
+
+兼容旧命令（仍可用）：
+
+```bash
+feishubot-chat --user-id demo-user
+```
+
+退出方式：输入 `exit` / `quit` / `/exit`，或按 `Ctrl+C`。
+
+## 4. 再调通 HTTP 大模型接口
 
 1. 在 `.env` 中配置：
 
@@ -70,7 +93,7 @@ curl -X POST http://127.0.0.1:8000/api/llm/chat \
   }'
 ```
 
-## 4. 飞书侧配置（后续）
+## 5. 飞书侧配置（后续）
 
 - 在飞书开发者后台创建应用并开启机器人能力
 - 设置事件订阅请求地址为：`https://<your-domain>/webhook/feishu/events`
@@ -80,7 +103,7 @@ curl -X POST http://127.0.0.1:8000/api/llm/chat \
   - `FEISHU_VERIFICATION_TOKEN`（可选，按你启用方式）
   - `FEISHU_ENCRYPT_KEY`（可选）
 
-## 5. 接入大模型说明
+## 6. 接入大模型说明
 
 当前在 `llm_client.py` 提供了：
 
@@ -96,13 +119,13 @@ curl -X POST http://127.0.0.1:8000/api/llm/chat \
 
 建议保留统一接口，方便后续扩展「工具调用」「多 Agent」「任务执行器」。
 
-## 6. 下一步建议
+## 7. 下一步建议
 
 - 增加飞书消息去重（基于 `event_id`）
 - 增加签名校验与加解密
 - 增加指令路由（如 `/plan`、`/run`）
 - 持久化会话上下文（Redis / PostgreSQL）
 
-## 7. License
+## 8. License
 
 本项目使用 Apache-2.0 许可证，详见 `LICENSE`。

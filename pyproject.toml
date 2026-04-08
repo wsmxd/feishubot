@@ -16,6 +16,10 @@ dependencies = [
   "pydantic-settings>=2.10.0,<3.0.0"
 ]
 
+[project.scripts]
+feishubot = "feishubot.cli:main"
+feishubot-chat = "feishubot.cli:chat_main"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 
