@@ -51,6 +51,16 @@ cp .env.example .env
 feishubot gateway --reload --host 0.0.0.0 --port 8000
 ```
 
+5. 快速配置（推荐首次执行）：
+
+```bash
+feishubot setup
+```
+
+会进入交互式向导，快速选择 LLM 提供商（`echo` / `openai_compatible`）并写入 `.env`。
+当前内置大模型预设：`qwen`、`kimi`、`deepseek`。
+该向导默认只配置大模型参数，选择后只需输入 API Key 即可使用，无需手动填写端点。
+
 ## 3. 先在终端跑通对话
 
 配置好 `.env` 后可直接进入终端对话：
