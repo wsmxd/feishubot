@@ -29,6 +29,12 @@ LLM_PRESETS: dict[str, dict[str, str]] = {
         "model": "deepseek-chat",
         "chat_path": "/v1/chat/completions",
     },
+    "zhipu": {
+        "label": "ZhiPu AI",
+        "base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "model": "glm-4",
+        "chat_path": "/chat/completions",
+    },
 }
 
 
@@ -246,9 +252,10 @@ def _run_setup(args: argparse.Namespace) -> None:
             ("1", f"qwen - {LLM_PRESETS['qwen']['label']}"),
             ("2", f"kimi - {LLM_PRESETS['kimi']['label']}"),
             ("3", f"deepseek - {LLM_PRESETS['deepseek']['label']}"),
-            ("4", "echo (for local smoke testing)"),
+            ("4", f"zhipu - {LLM_PRESETS['zhipu']['label']}"),
+            ("5", "echo (for local smoke testing)"),
         ],
-        default_key="4" if current.get("LLM_PROVIDER") == "echo" else "1",
+        default_key="5" if current.get("LLM_PROVIDER") == "echo" else "1",
     )
 
     selected_preset_key = ""
@@ -258,8 +265,10 @@ def _run_setup(args: argparse.Namespace) -> None:
         selected_preset_key = "kimi"
     elif model_choice == "3":
         selected_preset_key = "deepseek"
+    elif model_choice == "4":
+        selected_preset_key = "zhipu"
 
-    provider_value = "echo" if model_choice == "4" else "openai_compatible"
+    provider_value = "echo" if model_choice == "5" else "openai_compatible"
 
     values: dict[str, str] = {
         "APP_ENV": _prompt_text("APP_ENV", current.get("APP_ENV", "dev")),
