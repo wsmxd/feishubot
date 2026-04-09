@@ -11,6 +11,7 @@ from feishubot.ai.tools import ToolRuntime
 from feishubot.app import get_llm_client
 from feishubot.config import settings
 from feishubot.llm_client import OpenAICompatibleLLMClient
+from feishubot.session import SessionManager
 
 LLM_PRESETS: dict[str, dict[str, str]] = {
     "qwen": {
@@ -209,6 +210,7 @@ def _write_env_file(path: Path, values: dict[str, str]) -> None:
         "LLM_TIMEOUT_SECONDS",
         "LLM_SYSTEM_PROMPT",
         "LLM_MODELS_JSON",
+        "SESSION_MAX_HISTORY",
     ]
 
     lines = [_format_env_assignment(key, values.get(key, "")) for key in keys_in_order]
@@ -289,7 +291,11 @@ def _run_setup(args: argparse.Namespace) -> None:
         "LLM_TIMEOUT_SECONDS": current.get("LLM_TIMEOUT_SECONDS", "60"),
         "LLM_SYSTEM_PROMPT": current.get("LLM_SYSTEM_PROMPT", "You are a helpful assistant."),
         "LLM_MODELS_JSON": current.get("LLM_MODELS_JSON", ""),
+        "SESSION_MAX_HISTORY": current.get("SESSION_MAX_HISTORY", "50"),
     }
+    
+    # Prompt for session max history
+    values["SESSION_MAX_HISTORY"] = _prompt_text("SESSION_MAX_HISTORY", values["SESSION_MAX_HISTORY"])
 
     if provider_value == "openai_compatible":
         preset = LLM_PRESETS[selected_preset_key]
@@ -459,14 +465,16 @@ async def _generate_model_reply(
     prompt: str,
     user_id: str,
     system_prompt: str | None,
+    chat_history: list[dict[str, str]] | None = None,
 ) -> str:
     if isinstance(llm_client, OpenAICompatibleLLMClient) and system_prompt:
         return await llm_client.generate_reply_with_system_prompt(
             prompt=prompt,
             system_prompt=system_prompt,
             user_id=user_id,
+            chat_history=chat_history,
         )
-    return await llm_client.generate_reply(prompt=prompt, user_id=user_id)
+    return await llm_client.generate_reply(prompt=prompt, user_id=user_id, chat_history=chat_history)
 
 
 def _build_tool_routing_prompt(
@@ -489,6 +497,7 @@ async def _chat_loop(user_id: str, system_prompt: str | None) -> None:
     active = settings.active_llm_config()
     llm_client = get_llm_client()
     tool_runtime = ToolRuntime()
+    session_manager = SessionManager(max_history=settings.session_max_history)
 
     print("FeishuBot terminal chat is ready.")
     if active.provider == "echo":
@@ -512,6 +521,13 @@ async def _chat_loop(user_id: str, system_prompt: str | None) -> None:
             print("bye")
             break
 
+        if user_input.lower().startswith("/history"):
+            # Handle /history command
+            parts = user_input.split(" ", 1)
+            date_filter = parts[1].strip() if len(parts) > 1 else None
+            session_manager.show_chat_history(user_id, date_filter)
+            continue
+
         try:
             direct_tool_call = _parse_direct_tool_command(user_input)
             if direct_tool_call is not None:
@@ -520,20 +536,28 @@ async def _chat_loop(user_id: str, system_prompt: str | None) -> None:
                 print(f"bot> {tool_runtime.format_result(tool_name, tool_result)}")
                 continue
 
+            # Build prompt with tool routing
             first_prompt = _build_tool_routing_prompt(
                 user_input=user_input,
                 tool_runtime=tool_runtime,
             )
+            
+            # Pass chat history as context
             first_reply = await _generate_model_reply(
                 llm_client,
                 prompt=first_prompt,
                 user_id=user_id,
                 system_prompt=system_prompt,
+                chat_history=session_manager.get_history(),
             )
 
             tool_call = _extract_tool_call(first_reply)
             if tool_call is None:
                 print(f"bot> {first_reply}")
+                # Update chat history
+                session_manager.add_to_history("user", user_input)
+                session_manager.add_to_history("assistant", first_reply)
+                session_manager.save_chat_history(user_input, first_reply, user_id)
                 continue
 
             tool_name, arguments = tool_call
@@ -547,13 +571,20 @@ async def _chat_loop(user_id: str, system_prompt: str | None) -> None:
                 f"Tool result:\n{formatted_result}\n\n"
                 "Now answer the user based on the tool result."
             )
+            
+            # Pass chat history as context
             final_reply = await _generate_model_reply(
                 llm_client,
                 prompt=second_prompt,
                 user_id=user_id,
                 system_prompt=system_prompt,
+                chat_history=session_manager.get_history(),
             )
             print(f"bot> {final_reply}")
+            # Update chat history
+            session_manager.add_to_history("user", user_input)
+            session_manager.add_to_history("assistant", final_reply)
+            session_manager.save_chat_history(user_input, final_reply, user_id)
         except Exception as exc:  # noqa: BLE001
             print(f"bot(error)> {exc}")
             continue

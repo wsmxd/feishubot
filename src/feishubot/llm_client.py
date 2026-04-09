@@ -8,12 +8,12 @@ import httpx
 
 class LLMClient(ABC):
     @abstractmethod
-    async def generate_reply(self, prompt: str, user_id: str | None = None) -> str:
+    async def generate_reply(self, prompt: str, user_id: str | None = None, chat_history: list[dict[str, str]] | None = None) -> str:
         raise NotImplementedError
 
 
 class EchoLLMClient(LLMClient):
-    async def generate_reply(self, prompt: str, user_id: str | None = None) -> str:
+    async def generate_reply(self, prompt: str, user_id: str | None = None, chat_history: list[dict[str, str]] | None = None) -> str:
         prefix = f"[echo user={user_id}] " if user_id else "[echo] "
         return prefix + prompt
 
@@ -43,9 +43,9 @@ class OpenAICompatibleLLMClient(LLMClient):
         self._timeout_seconds = timeout_seconds
         self._default_system_prompt = default_system_prompt
 
-    async def generate_reply(self, prompt: str, user_id: str | None = None) -> str:
+    async def generate_reply(self, prompt: str, user_id: str | None = None, chat_history: list[dict[str, str]] | None = None) -> str:
         return await self.generate_reply_with_system_prompt(
-            prompt=prompt, system_prompt=self._default_system_prompt, user_id=user_id
+            prompt=prompt, system_prompt=self._default_system_prompt, user_id=user_id, chat_history=chat_history
         )
 
     async def generate_reply_with_system_prompt(
@@ -54,18 +54,29 @@ class OpenAICompatibleLLMClient(LLMClient):
         prompt: str,
         system_prompt: str,
         user_id: str | None = None,
+        chat_history: list[dict[str, str]] | None = None,
     ) -> str:
         url = f"{self._base_url}{self._chat_path}"
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
         }
+        
+        # 构建消息列表
+        messages = [
+            {"role": "system", "content": system_prompt},
+        ]
+        
+        # 添加历史对话
+        if chat_history:
+            messages.extend(chat_history)
+        
+        # 添加当前用户输入
+        messages.append({"role": "user", "content": prompt})
+        
         payload: dict[str, Any] = {
             "model": self._model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ],
+            "messages": messages,
             "temperature": 0.7,
         }
         if user_id:

@@ -25,3 +25,6 @@ uv.lock
 .vscode/
 .idea/
 .DS_Store
+
+# Chat history
+history/

@@ -68,8 +68,9 @@ feishubot setup
 ```
 
 会进入交互式向导，快速选择 LLM 提供商（`echo` / `openai_compatible`）并写入 `.env`。
-当前内置大模型预设：`qwen`、`kimi`、`deepseek`。
-该向导会写入 `LLM_MODELS_JSON` 和 `LLM_ACTIVE_MODEL`，用于维护多个模型并快速切换。
+当前内置大模型预设：`qwen`、`kimi`、`deepseek`、`Glm-4`。
+该向导会写入 `LLM_MODELS_JSON`和 `LLM_ACTIVE_MODEL`，用于维护多个模型并快速切换。
+同时会让用户写入`SESSION_MAX_HISTORY` ，用于设置每个会话的最大历史记录数,用户可以选择是否添写默认50。
 
 ## 3. 先在终端跑通对话
 
