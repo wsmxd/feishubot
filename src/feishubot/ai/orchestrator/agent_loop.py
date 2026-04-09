@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from json import JSONDecodeError, JSONDecoder
 from typing import Any
 
 from feishubot.ai.tools.runtime import ToolRuntime
@@ -17,12 +18,9 @@ def _strip_code_fences(text: str) -> str:
 
 def _extract_tool_call(text: str) -> tuple[str, dict[str, Any]] | None:
     payload_text = _strip_code_fences(text)
-    try:
-        payload = json.loads(payload_text)
-    except json.JSONDecodeError:
-        return None
 
-    if not isinstance(payload, dict):
+    payload = _parse_json_object(payload_text)
+    if payload is None:
         return None
 
     tool_name = payload.get("tool") or payload.get("name")
@@ -34,6 +32,29 @@ def _extract_tool_call(text: str) -> tuple[str, dict[str, Any]] | None:
         return None
 
     return tool_name.strip(), arguments
+
+
+def _parse_json_object(text: str) -> dict[str, Any] | None:
+    decoder = JSONDecoder()
+
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except JSONDecodeError:
+        pass
+
+    for start in range(len(text)):
+        if text[start] != "{":
+            continue
+        try:
+            parsed, _ = decoder.raw_decode(text[start:])
+        except JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+
+    return None
 
 
 class AgentLoop:
@@ -79,15 +100,25 @@ class AgentLoop:
             return first_reply
 
         tool_name, arguments = tool_call
-        tool_result = await self._tool_runtime.execute(tool_name, arguments)
-        formatted_result = self._tool_runtime.format_result(tool_name, tool_result)
+        tool_failed = False
+        tool_error = ""
+        try:
+            tool_result = await self._tool_runtime.execute(tool_name, arguments)
+            formatted_result = self._tool_runtime.format_result(tool_name, tool_result)
+        except Exception as exc:  # noqa: BLE001
+            tool_failed = True
+            tool_error = str(exc)
+            formatted_result = "<tool execution failed>"
 
         second_prompt = (
             f"User request:\n{user_input}\n\n"
             f"Tool called: {tool_name}\n"
             f"Tool arguments:\n{json.dumps(arguments, ensure_ascii=False, indent=2)}\n\n"
             f"Tool result:\n{formatted_result}\n\n"
-            "Now answer the user based on the tool result."
+            f"Tool failed: {tool_failed}\n"
+            f"Tool error: {tool_error}\n\n"
+            "Now answer the user based on the tool result. "
+            "If tool failed, explain the failure and suggest a safer retry."
         )
 
         return await self._generate_model_reply(prompt=second_prompt, user_id=user_id)

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 import yaml
@@ -12,6 +14,8 @@ from feishubot.ai.tools.base import Tool
 from feishubot.ai.tools.builtins import register_builtin_tools
 from feishubot.ai.tools.registry import tool_registry
 from feishubot.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -113,7 +117,18 @@ class ToolRuntime:
         if tool_routing is not None and tool_routing.timeout_seconds is not None:
             effective_arguments.setdefault("timeout_seconds", tool_routing.timeout_seconds)
 
-        return await tool.run(effective_arguments)
+        validated_arguments = tool.validate_arguments(effective_arguments)
+        start = perf_counter()
+        try:
+            result = await tool.run(validated_arguments)
+        except Exception:
+            elapsed_ms = int((perf_counter() - start) * 1000)
+            logger.exception("tool execution failed: name=%s duration_ms=%s", name, elapsed_ms)
+            raise
+
+        elapsed_ms = int((perf_counter() - start) * 1000)
+        logger.info("tool execution succeeded: name=%s duration_ms=%s", name, elapsed_ms)
+        return result
 
     @staticmethod
     def format_result(name: str, result: dict[str, Any]) -> str:

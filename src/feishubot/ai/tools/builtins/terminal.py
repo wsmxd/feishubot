@@ -5,7 +5,16 @@ import re
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel, Field
+
 from feishubot.ai.tools.base import Tool
+
+
+class TerminalArguments(BaseModel):
+    command: str = Field(min_length=1, max_length=4000)
+    cwd: str | None = None
+    timeout_seconds: float = Field(default=60.0, gt=0)
+    allow_dangerous: bool = False
 
 
 class TerminalCommandTool(Tool):
@@ -13,6 +22,7 @@ class TerminalCommandTool(Tool):
     description = (
         "Execute a shell command and return stdout, stderr, exit code, and timeout status."
     )
+    args_model = TerminalArguments
 
     _DANGEROUS_COMMAND_PATTERNS: tuple[str, ...] = (
         r"(^|\s)rm\s+-rf\s+/",
@@ -50,13 +60,7 @@ class TerminalCommandTool(Tool):
             if not cwd_path.exists():
                 raise ValueError(f"cwd does not exist: {cwd_path}")
 
-        timeout_seconds_raw = arguments.get("timeout_seconds", 60)
-        try:
-            timeout_seconds = float(timeout_seconds_raw)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("timeout_seconds must be numeric") from exc
-        if timeout_seconds <= 0:
-            raise ValueError("timeout_seconds must be > 0")
+        timeout_seconds = float(arguments.get("timeout_seconds", 60.0))
 
         process = await asyncio.create_subprocess_shell(
             command,

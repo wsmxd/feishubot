@@ -4,6 +4,8 @@ import ast
 import operator as operator_module
 from typing import Any
 
+from pydantic import BaseModel, Field
+
 from feishubot.ai.tools.base import Tool
 
 _ALLOWED_BINARY_OPERATORS: dict[type[ast.AST], Any] = {
@@ -40,14 +42,17 @@ def _safe_eval(node: ast.AST) -> float | int:
     raise ValueError("unsupported expression")
 
 
+class CalculatorArguments(BaseModel):
+    expression: str = Field(min_length=1, description="Arithmetic expression to evaluate")
+
+
 class CalculatorTool(Tool):
     name = "calculator"
     description = "Evaluate simple arithmetic expressions."
+    args_model = CalculatorArguments
 
     async def run(self, arguments: dict[str, Any]) -> dict[str, Any]:
         expression = str(arguments.get("expression", "")).strip()
-        if not expression:
-            raise ValueError("calculator requires an 'expression' argument")
 
         parsed = ast.parse(expression, mode="eval")
         result = _safe_eval(parsed)
