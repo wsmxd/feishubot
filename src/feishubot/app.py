@@ -6,11 +6,12 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from feishubot.ai.core.errors import ProviderNotFoundError
 from feishubot.ai.orchestrator import AgentLoop
+from feishubot.ai.providers import ModelProvider, create_provider
 from feishubot.ai.tools import ToolRuntime
 from feishubot.config import settings
 from feishubot.feishu import FeishuClient
-from feishubot.llm_client import EchoLLMClient, LLMClient, OpenAICompatibleLLMClient
 
 app = FastAPI(title="FeishuBot", version="0.1.0")
 
@@ -20,21 +21,12 @@ feishu_client = FeishuClient(
 )
 
 
-def get_llm_client() -> LLMClient:
+def get_model_provider() -> ModelProvider:
     active = settings.active_llm_config()
-
-    if active.provider == "openai_compatible":
-        return OpenAICompatibleLLMClient(
-            base_url=active.base_url,
-            api_key=active.api_key,
-            model=active.model,
-            chat_path=active.chat_path,
-            timeout_seconds=active.timeout_seconds,
-            default_system_prompt=active.system_prompt,
-        )
-    if active.provider == "echo":
-        return EchoLLMClient()
-    raise HTTPException(status_code=500, detail=f"unsupported LLM provider: {active.provider}")
+    try:
+        return create_provider(active)
+    except ProviderNotFoundError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 class ChatRequest(BaseModel):
@@ -57,11 +49,11 @@ async def healthz() -> dict[str, str]:
 @app.post("/api/llm/chat", response_model=ChatResponse)
 async def chat_with_llm(payload: ChatRequest) -> ChatResponse:
     active = settings.active_llm_config()
-    llm_client = get_llm_client()
+    model_provider = get_model_provider()
     agent_loop = AgentLoop(
-        llm_client=llm_client,
+        model_provider=model_provider,
         tool_runtime=ToolRuntime(),
-        system_prompt=payload.system_prompt,
+        system_prompt=payload.system_prompt or active.system_prompt,
     )
     reply = await agent_loop.run(user_input=payload.message, user_id=payload.user_id)
 
@@ -106,11 +98,11 @@ async def handle_feishu_events(request: Request) -> dict[str, Any]:
     user_open_id = sender.get("sender_id", {}).get("open_id")
     chat_id = event.get("message", {}).get("chat_id")
 
-    llm_client = get_llm_client()
+    model_provider = get_model_provider()
     agent_loop = AgentLoop(
-        llm_client=llm_client,
+        model_provider=model_provider,
         tool_runtime=ToolRuntime(),
-        system_prompt=settings.llm_system_prompt,
+        system_prompt=settings.active_llm_config().system_prompt,
     )
     reply = await agent_loop.run(user_input=text, user_id=user_open_id)
 

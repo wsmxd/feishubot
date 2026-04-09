@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any
 
 from feishubot.ai.orchestrator.agent_loop import AgentLoop
+from feishubot.ai.providers import create_active_provider
 from feishubot.ai.tools import ToolRuntime
-from feishubot.app import get_llm_client
 from feishubot.config import settings
 
 LLM_PRESETS: dict[str, dict[str, str]] = {
@@ -417,12 +417,12 @@ def _parse_direct_tool_command(user_input: str) -> tuple[str, dict[str, Any]] | 
 
 async def _chat_loop(user_id: str, system_prompt: str | None) -> None:
     active = settings.active_llm_config()
-    llm_client = get_llm_client()
+    model_provider = create_active_provider()
     tool_runtime = ToolRuntime()
     agent_loop = AgentLoop(
-        llm_client=llm_client,
+        model_provider=model_provider,
         tool_runtime=tool_runtime,
-        system_prompt=system_prompt,
+        system_prompt=system_prompt or active.system_prompt,
     )
 
     print("FeishuBot terminal chat is ready.")

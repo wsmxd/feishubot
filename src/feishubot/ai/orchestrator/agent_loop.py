@@ -4,8 +4,9 @@ import json
 from json import JSONDecodeError, JSONDecoder
 from typing import Any
 
+from feishubot.ai.core.schemas import ChatMessage
+from feishubot.ai.providers.base import ModelProvider
 from feishubot.ai.tools.runtime import ToolRuntime
-from feishubot.llm_client import OpenAICompatibleLLMClient
 
 
 def _strip_code_fences(text: str) -> str:
@@ -63,22 +64,22 @@ class AgentLoop:
     def __init__(
         self,
         *,
-        llm_client: Any,
+        model_provider: ModelProvider,
         tool_runtime: ToolRuntime,
         system_prompt: str | None = None,
     ) -> None:
-        self._llm_client = llm_client
+        self._model_provider = model_provider
         self._tool_runtime = tool_runtime
         self._system_prompt = system_prompt
 
     async def _generate_model_reply(self, *, prompt: str, user_id: str | None = None) -> str:
-        if isinstance(self._llm_client, OpenAICompatibleLLMClient) and self._system_prompt:
-            return await self._llm_client.generate_reply_with_system_prompt(
-                prompt=prompt,
-                system_prompt=self._system_prompt,
-                user_id=user_id,
-            )
-        return await self._llm_client.generate_reply(prompt=prompt, user_id=user_id)
+        messages: list[ChatMessage] = []
+        if self._system_prompt:
+            messages.append(ChatMessage(role="system", content=self._system_prompt))
+        messages.append(ChatMessage(role="user", content=prompt))
+
+        response = await self._model_provider.chat(messages=messages, user_id=user_id)
+        return response.text
 
     def _build_tool_routing_prompt(self, user_input: str) -> str:
         tool_catalog = self._tool_runtime.render_tool_catalog()
