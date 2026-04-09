@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     llm_system_prompt: str = "You are a helpful assistant."
     llm_active_model: str = ""
     llm_models_json: str = ""
+    ai_tools_config_path: str = ""
 
     def _resolve_from_model_map(self) -> ActiveLLMConfig | None:
         raw = self.llm_models_json.strip()

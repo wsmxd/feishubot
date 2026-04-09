@@ -6,6 +6,8 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from feishubot.ai.orchestrator import AgentLoop
+from feishubot.ai.tools import ToolRuntime
 from feishubot.config import settings
 from feishubot.feishu import FeishuClient
 from feishubot.llm_client import EchoLLMClient, LLMClient, OpenAICompatibleLLMClient
@@ -56,15 +58,12 @@ async def healthz() -> dict[str, str]:
 async def chat_with_llm(payload: ChatRequest) -> ChatResponse:
     active = settings.active_llm_config()
     llm_client = get_llm_client()
-
-    if isinstance(llm_client, OpenAICompatibleLLMClient) and payload.system_prompt:
-        reply = await llm_client.generate_reply_with_system_prompt(
-            prompt=payload.message,
-            system_prompt=payload.system_prompt,
-            user_id=payload.user_id,
-        )
-    else:
-        reply = await llm_client.generate_reply(prompt=payload.message, user_id=payload.user_id)
+    agent_loop = AgentLoop(
+        llm_client=llm_client,
+        tool_runtime=ToolRuntime(),
+        system_prompt=payload.system_prompt,
+    )
+    reply = await agent_loop.run(user_input=payload.message, user_id=payload.user_id)
 
     return ChatResponse(
         provider=active.provider,
@@ -108,7 +107,12 @@ async def handle_feishu_events(request: Request) -> dict[str, Any]:
     chat_id = event.get("message", {}).get("chat_id")
 
     llm_client = get_llm_client()
-    reply = await llm_client.generate_reply(prompt=text, user_id=user_open_id)
+    agent_loop = AgentLoop(
+        llm_client=llm_client,
+        tool_runtime=ToolRuntime(),
+        system_prompt=settings.llm_system_prompt,
+    )
+    reply = await agent_loop.run(user_input=text, user_id=user_open_id)
 
     # For private/group chat replies, send by chat_id. Adjust receive_id_type if needed.
     if chat_id:

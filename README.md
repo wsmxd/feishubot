@@ -93,6 +93,12 @@ feishubot-chat --user-id demo-user
 
 退出方式：输入 `exit` / `quit` / `/exit`，或按 `Ctrl+C`。
 
+工具层配置（可选）：
+
+- 通过 `AI_TOOLS_CONFIG_PATH` 指向 YAML 文件（可参考 `src/feishubot/ai/configs/tools.example.yaml`）
+- 支持 `enabled_tools` 控制可用工具集合
+- 支持 `routing.<tool>.timeout_seconds` 覆盖工具默认超时
+
 ## 4. 再调通 HTTP 大模型接口
 
 1. 在 `.env` 中配置（单模型或多模型二选一）：
