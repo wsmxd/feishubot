@@ -2,10 +2,15 @@
 
 ## Top-level Layout
 
-- `src/feishubot/`: source code
+- `src/feishubot/`: Python package source code for FeishuBot
 - `docs/`: architecture and design notes
 - `pyproject.toml`: packaging, dependencies, and tooling configuration
 - `README.md`: user-facing project overview and quick start
+
+## Naming Convention
+
+- Use `FeishuBot` for the project/product name in prose and metadata.
+- Use `feishubot` only for the Python package path, CLI module path, and filesystem references.
 
 ## Source Code Areas
 
