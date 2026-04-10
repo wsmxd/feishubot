@@ -11,6 +11,7 @@ from feishubot.ai.orchestrator.agent_loop import AgentLoop
 from feishubot.ai.providers import create_active_provider
 from feishubot.ai.tools import ToolRuntime
 from feishubot.config import settings
+from feishubot.ai.memory import SessionManager
 
 LLM_PRESETS: dict[str, dict[str, str]] = {
     "qwen": {
@@ -30,6 +31,12 @@ LLM_PRESETS: dict[str, dict[str, str]] = {
         "base_url": "https://api.deepseek.com",
         "model": "deepseek-chat",
         "chat_path": "/v1/chat/completions",
+    },
+    "zhipu": {
+        "label": "ZhiPu AI",
+        "base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "model": "glm-4",
+        "chat_path": "/chat/completions",
     },
 }
 
@@ -58,17 +65,25 @@ def _build_parser() -> argparse.ArgumentParser:
         default="0.0.0.0",  # noqa: S104 - intentional default for dev/container access
         help="Gateway bind host",
     )
-    gateway_parser.add_argument("--port", type=int, default=8000, help="Gateway bind port")
+    gateway_parser.add_argument(
+        "--port", type=int, default=8000, help="Gateway bind port"
+    )
     gateway_parser.add_argument(
         "--reload", action="store_true", help="Enable auto-reload for development"
     )
 
-    setup_parser = subparsers.add_parser("setup", help="Interactive quick setup for .env")
-    setup_parser.add_argument(
-        "--env-file", default=".env", help="Path to the environment file to create/update"
+    setup_parser = subparsers.add_parser(
+        "setup", help="Interactive quick setup for .env"
     )
     setup_parser.add_argument(
-        "--yes", action="store_true", help="Skip overwrite confirmation if env file exists"
+        "--env-file",
+        default=".env",
+        help="Path to the environment file to create/update",
+    )
+    setup_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Skip overwrite confirmation if env file exists",
     )
 
     model_parser = subparsers.add_parser(
@@ -173,7 +188,9 @@ def _load_env_file(path: Path) -> dict[str, str]:
 
 
 def _format_env_value(value: str) -> str:
-    needs_quote = any(ch.isspace() for ch in value) or any(ch in value for ch in ["#", '"', "'"])
+    needs_quote = any(ch.isspace() for ch in value) or any(
+        ch in value for ch in ["#", '"', "'"]
+    )
     if not needs_quote:
         return value
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
@@ -203,6 +220,7 @@ def _write_env_file(path: Path, values: dict[str, str]) -> None:
         "LLM_TIMEOUT_SECONDS",
         "LLM_SYSTEM_PROMPT",
         "LLM_MODELS_JSON",
+        "SESSION_MAX_HISTORY",
     ]
 
     lines = [_format_env_assignment(key, values.get(key, "")) for key in keys_in_order]
@@ -248,9 +266,10 @@ def _run_setup(args: argparse.Namespace) -> None:
             ("1", f"qwen - {LLM_PRESETS['qwen']['label']}"),
             ("2", f"kimi - {LLM_PRESETS['kimi']['label']}"),
             ("3", f"deepseek - {LLM_PRESETS['deepseek']['label']}"),
-            ("4", "echo (for local smoke testing)"),
+            ("4", f"zhipu - {LLM_PRESETS['zhipu']['label']}"),
+            ("5", "echo (for local smoke testing)"),
         ],
-        default_key="4" if current.get("LLM_PROVIDER") == "echo" else "1",
+        default_key="5" if current.get("LLM_PROVIDER") == "echo" else "1",
     )
 
     selected_preset_key = ""
@@ -260,8 +279,10 @@ def _run_setup(args: argparse.Namespace) -> None:
         selected_preset_key = "kimi"
     elif model_choice == "3":
         selected_preset_key = "deepseek"
+    elif model_choice == "4":
+        selected_preset_key = "zhipu"
 
-    provider_value = "echo" if model_choice == "4" else "openai_compatible"
+    provider_value = "echo" if model_choice == "5" else "openai_compatible"
 
     values: dict[str, str] = {
         "APP_ENV": _prompt_text("APP_ENV", current.get("APP_ENV", "dev")),
@@ -278,16 +299,26 @@ def _run_setup(args: argparse.Namespace) -> None:
         "LLM_MODEL": current.get("LLM_MODEL", ""),
         "LLM_CHAT_PATH": current.get("LLM_CHAT_PATH", "/v1/chat/completions"),
         "LLM_TIMEOUT_SECONDS": current.get("LLM_TIMEOUT_SECONDS", "60"),
-        "LLM_SYSTEM_PROMPT": current.get("LLM_SYSTEM_PROMPT", "You are a helpful assistant."),
+        "LLM_SYSTEM_PROMPT": current.get(
+            "LLM_SYSTEM_PROMPT", "You are a helpful assistant."
+        ),
         "LLM_MODELS_JSON": current.get("LLM_MODELS_JSON", ""),
+        "SESSION_MAX_HISTORY": current.get("SESSION_MAX_HISTORY", "50"),
     }
+
+    # Prompt for session max history
+    values["SESSION_MAX_HISTORY"] = _prompt_text(
+        "SESSION_MAX_HISTORY", values["SESSION_MAX_HISTORY"]
+    )
 
     if provider_value == "openai_compatible":
         preset = LLM_PRESETS[selected_preset_key]
         values["LLM_BASE_URL"] = preset["base_url"]
         values["LLM_MODEL"] = preset["model"]
         values["LLM_CHAT_PATH"] = preset["chat_path"]
-        values["LLM_API_KEY"] = _prompt_secret("LLM_API_KEY", current.get("LLM_API_KEY", ""))
+        values["LLM_API_KEY"] = _prompt_secret(
+            "LLM_API_KEY", current.get("LLM_API_KEY", "")
+        )
         values["LLM_TIMEOUT_SECONDS"] = _prompt_text(
             "LLM_TIMEOUT_SECONDS", current.get("LLM_TIMEOUT_SECONDS", "60")
         )
@@ -424,6 +455,11 @@ async def _chat_loop(user_id: str, system_prompt: str | None) -> None:
         tool_runtime=tool_runtime,
         system_prompt=system_prompt or active.system_prompt,
     )
+    session_manager = SessionManager(
+        max_history=settings.session_max_history,
+        store_sensitive=settings.session_store_sensitive,
+    )
+    session_manager.load_history(user_id)
 
     print("FeishuBot terminal chat is ready.")
     if active.provider == "echo":
@@ -447,6 +483,13 @@ async def _chat_loop(user_id: str, system_prompt: str | None) -> None:
             print("bye")
             break
 
+        if user_input.lower().startswith("/history"):
+            # Handle /history command
+            parts = user_input.split(" ", 1)
+            date_filter = parts[1].strip() if len(parts) > 1 else None
+            session_manager.show_chat_history(user_id, date_filter)
+            continue
+
         try:
             direct_tool_call = _parse_direct_tool_command(user_input)
             if direct_tool_call is not None:
@@ -455,8 +498,16 @@ async def _chat_loop(user_id: str, system_prompt: str | None) -> None:
                 print(f"bot> {tool_runtime.format_result(tool_name, tool_result)}")
                 continue
 
-            final_reply = await agent_loop.run(user_input=user_input, user_id=user_id)
+            # Get chat history for context
+            chat_history = session_manager.get_history(user_id)
+            final_reply = await agent_loop.run(
+                user_input=user_input, user_id=user_id, chat_history=chat_history
+            )
             print(f"bot> {final_reply}")
+            # Update chat history
+            session_manager.add_to_history(user_id, "user", user_input)
+            session_manager.add_to_history(user_id, "assistant", final_reply)
+            session_manager.save_chat_history(user_input, final_reply, user_id)
         except Exception as exc:  # noqa: BLE001
             print(f"bot(error)> {exc}")
             continue

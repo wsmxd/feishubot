@@ -34,7 +34,9 @@ class OpenAICompatibleProvider(ModelProvider):
     async def chat(
         self, messages: list[ChatMessage], *, user_id: str | None = None
     ) -> ModelResponse:
-        payload_messages = [{"role": msg.role, "content": msg.content} for msg in messages]
+        payload_messages = [
+            {"role": msg.role, "content": msg.content} for msg in messages
+        ]
         url = f"{self._base_url}{self._chat_path}"
         headers = {
             "Authorization": f"Bearer {self._api_key}",
@@ -79,4 +81,6 @@ class OpenAICompatibleProvider(ModelProvider):
             if text_chunks:
                 return "\n".join(text_chunks)
 
-        raise RuntimeError(f"invalid provider response, missing message content: {data}")
+        raise RuntimeError(
+            f"invalid provider response, missing message content: {data}"
+        )

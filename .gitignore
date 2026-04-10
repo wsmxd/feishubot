@@ -20,8 +20,11 @@ env/
 
 # uv lockfile (not used in this project)
 uv.lock
+.ruff_cache/
 
 # IDE / OS
 .vscode/
 .idea/
 .DS_Store
+
+

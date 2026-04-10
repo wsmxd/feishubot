@@ -13,4 +13,9 @@ def register_builtin_tools() -> None:
         tool_registry.register(WebSearchTool.name, WebSearchTool())
 
 
-__all__ = ["CalculatorTool", "TerminalCommandTool", "WebSearchTool", "register_builtin_tools"]
+__all__ = [
+    "CalculatorTool",
+    "TerminalCommandTool",
+    "WebSearchTool",
+    "register_builtin_tools",
+]

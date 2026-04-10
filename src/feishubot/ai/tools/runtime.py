@@ -55,7 +55,9 @@ class ToolRuntime:
                 isinstance(item, str) for item in enabled_tools
             ):
                 raise ValueError("enabled_tools must be a list of strings")
-            self._enabled_tools = {name.strip() for name in enabled_tools if name.strip()}
+            self._enabled_tools = {
+                name.strip() for name in enabled_tools if name.strip()
+            }
 
         routing = raw.get("routing")
         if routing is not None:
@@ -104,7 +106,9 @@ class ToolRuntime:
             lines.append(f"- {tool.name}: {tool.description}")
         return "\n".join(lines)
 
-    async def execute(self, name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def execute(
+        self, name: str, arguments: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         if not self._is_tool_enabled(name):
             raise ToolNotFoundError(f"tool not enabled: {name}")
 
@@ -115,7 +119,9 @@ class ToolRuntime:
         effective_arguments = dict(arguments or {})
         tool_routing = self._routing.get(name)
         if tool_routing is not None and tool_routing.timeout_seconds is not None:
-            effective_arguments.setdefault("timeout_seconds", tool_routing.timeout_seconds)
+            effective_arguments.setdefault(
+                "timeout_seconds", tool_routing.timeout_seconds
+            )
 
         validated_arguments = tool.validate_arguments(effective_arguments)
         start = perf_counter()
@@ -123,11 +129,15 @@ class ToolRuntime:
             result = await tool.run(validated_arguments)
         except Exception:
             elapsed_ms = int((perf_counter() - start) * 1000)
-            logger.exception("tool execution failed: name=%s duration_ms=%s", name, elapsed_ms)
+            logger.exception(
+                "tool execution failed: name=%s duration_ms=%s", name, elapsed_ms
+            )
             raise
 
         elapsed_ms = int((perf_counter() - start) * 1000)
-        logger.info("tool execution succeeded: name=%s duration_ms=%s", name, elapsed_ms)
+        logger.info(
+            "tool execution succeeded: name=%s duration_ms=%s", name, elapsed_ms
+        )
         return result
 
     @staticmethod

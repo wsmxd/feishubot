@@ -10,6 +10,10 @@ The codebase uses a provider interface to isolate model-specific API calls from 
 
 This keeps the rest of the system independent from transport details and backend-specific payload formats.
 
+FeishuBot uses `feishubot` only as the Python package path; the project name in prose and metadata is `FeishuBot`.
+
+The repository still contains `src/feishubot/llm_client.py` as a prompt-based compatibility layer and reference implementation, but the provider factory is the main execution path.
+
 ## 2. Single Orchestrator Flow
 
 `AgentLoop` is the shared execution path for CLI, HTTP chat, and Feishu webhook processing.

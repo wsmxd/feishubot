@@ -19,7 +19,9 @@ class ActiveLLMConfig:
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
 
     app_env: str = "dev"
     log_level: str = "INFO"
@@ -38,6 +40,8 @@ class Settings(BaseSettings):
     llm_system_prompt: str = "You are a helpful assistant."
     llm_active_model: str = ""
     llm_models_json: str = ""
+    session_max_history: int = 50
+    session_store_sensitive: bool = False
     ai_tools_config_path: str = ""
 
     def _resolve_from_model_map(self) -> ActiveLLMConfig | None:
@@ -56,14 +60,18 @@ class Settings(BaseSettings):
         active_name = self.llm_active_model.strip() or next(iter(models))
         active_config = models.get(active_name)
         if not isinstance(active_config, dict):
-            raise ValueError(f"active model '{active_name}' not found in LLM_MODELS_JSON")
+            raise ValueError(
+                f"active model '{active_name}' not found in LLM_MODELS_JSON"
+            )
 
         provider = str(active_config.get("provider", "openai_compatible"))
         base_url = str(active_config.get("base_url", ""))
         api_key = str(active_config.get("api_key", ""))
         model = str(active_config.get("model", ""))
         chat_path = str(active_config.get("chat_path", "/v1/chat/completions"))
-        timeout_seconds_raw = active_config.get("timeout_seconds", self.llm_timeout_seconds)
+        timeout_seconds_raw = active_config.get(
+            "timeout_seconds", self.llm_timeout_seconds
+        )
         system_prompt = str(active_config.get("system_prompt", self.llm_system_prompt))
 
         try:

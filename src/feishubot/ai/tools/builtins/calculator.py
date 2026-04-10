@@ -43,7 +43,9 @@ def _safe_eval(node: ast.AST) -> float | int:
 
 
 class CalculatorArguments(BaseModel):
-    expression: str = Field(min_length=1, description="Arithmetic expression to evaluate")
+    expression: str = Field(
+        min_length=1, description="Arithmetic expression to evaluate"
+    )
 
 
 class CalculatorTool(Tool):

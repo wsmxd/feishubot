@@ -43,7 +43,9 @@ class WebSearchTool(Tool):
             }
         )
 
-    def _extract_results(self, data: dict[str, Any], *, max_results: int) -> list[dict[str, str]]:
+    def _extract_results(
+        self, data: dict[str, Any], *, max_results: int
+    ) -> list[dict[str, str]]:
         results: list[dict[str, str]] = []
 
         self._append_result(
@@ -97,7 +99,9 @@ class WebSearchTool(Tool):
             "no_html": "1",
             "skip_disambig": "1",
         }
-        headers = {"User-Agent": "feishubot/0.1.0 (+https://github.com/wsmxd/feishubot)"}
+        headers = {
+            "User-Agent": "feishubot/0.1.0 (+https://github.com/wsmxd/feishubot)"
+        }
 
         async with httpx.AsyncClient(timeout=timeout_seconds) as client:
             response = await client.get(

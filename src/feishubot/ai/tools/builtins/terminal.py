@@ -19,9 +19,7 @@ class TerminalArguments(BaseModel):
 
 class TerminalCommandTool(Tool):
     name = "terminal"
-    description = (
-        "Execute a shell command and return stdout, stderr, exit code, and timeout status."
-    )
+    description = "Execute a shell command and return stdout, stderr, exit code, and timeout status."
     args_model = TerminalArguments
 
     _DANGEROUS_COMMAND_PATTERNS: tuple[str, ...] = (

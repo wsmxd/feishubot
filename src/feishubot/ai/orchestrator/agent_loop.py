@@ -72,10 +72,22 @@ class AgentLoop:
         self._tool_runtime = tool_runtime
         self._system_prompt = system_prompt
 
-    async def _generate_model_reply(self, *, prompt: str, user_id: str | None = None) -> str:
+    async def _generate_model_reply(
+        self,
+        *,
+        prompt: str,
+        user_id: str | None = None,
+        chat_history: list[dict] | None = None,
+    ) -> str:
         messages: list[ChatMessage] = []
         if self._system_prompt:
             messages.append(ChatMessage(role="system", content=self._system_prompt))
+
+        # Add chat history if provided
+        if chat_history:
+            for item in chat_history:
+                messages.append(ChatMessage(role=item["role"], content=item["content"]))
+
         messages.append(ChatMessage(role="user", content=prompt))
 
         response = await self._model_provider.chat(messages=messages, user_id=user_id)
@@ -92,9 +104,16 @@ class AgentLoop:
             f"User request:\n{user_input}"
         )
 
-    async def run(self, user_input: str, user_id: str | None = None) -> str:
+    async def run(
+        self,
+        user_input: str,
+        user_id: str | None = None,
+        chat_history: list[dict] | None = None,
+    ) -> str:
         first_prompt = self._build_tool_routing_prompt(user_input)
-        first_reply = await self._generate_model_reply(prompt=first_prompt, user_id=user_id)
+        first_reply = await self._generate_model_reply(
+            prompt=first_prompt, user_id=user_id, chat_history=chat_history
+        )
 
         tool_call = _extract_tool_call(first_reply)
         if tool_call is None:
@@ -122,4 +141,6 @@ class AgentLoop:
             "If tool failed, explain the failure and suggest a safer retry."
         )
 
-        return await self._generate_model_reply(prompt=second_prompt, user_id=user_id)
+        return await self._generate_model_reply(
+            prompt=second_prompt, user_id=user_id, chat_history=chat_history
+        )
