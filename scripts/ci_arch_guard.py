@@ -33,6 +33,14 @@ def _ensure_base_ref(base_ref: str) -> str:
         return base_ref
 
 
+def _has_merge_base(base_ref: str) -> bool:
+    try:
+        _run(["git", "merge-base", base_ref, "HEAD"])
+        return True
+    except RuntimeError:
+        return False
+
+
 def _changed_paths(diff_range: str) -> list[str]:
     output = _run(["git", "diff", "--name-only", diff_range])
     if not output:
@@ -124,7 +132,7 @@ def _check_legacy_llm_imports(changed_paths: list[str], violations: list[str]) -
         content = file_path.read_text(encoding="utf-8")
         if import_pattern.search(content):
             violations.append(
-                f"入口层文件 {path} 重新引入 feishubot.llm_client。"
+                f"入口层文件 {path} 直接引用 feishubot.llm_client。"
                 "请保持 provider + AgentLoop 单一主流程。"
             )
 
@@ -159,12 +167,28 @@ def main() -> int:
     base_ref = _ensure_base_ref(args.base_ref)
     diff_range = f"{base_ref}...HEAD"
 
-    changed_paths = _changed_paths(diff_range)
+    if not _has_merge_base(base_ref):
+        print("Architecture guard: failed")
+        print(
+            "1. 无法找到 PR 分支与基线分支的共同提交（no merge base）。"
+            "请先同步上游分支再重试。"
+        )
+        print(f"2. 调试信息: base_ref={base_ref}, diff_range={diff_range}")
+        return 1
+
+    try:
+        changed_paths = _changed_paths(diff_range)
+        name_status = _changed_name_status(diff_range)
+    except RuntimeError as exc:
+        print("Architecture guard: failed")
+        print("1. 计算 PR 差异失败，请检查分支是否合法、是否已同步上游。")
+        print(f"2. 错误信息: {exc}")
+        return 1
+
     if not changed_paths:
         print("Architecture guard: no changed files detected, skipping.")
         return 0
 
-    name_status = _changed_name_status(diff_range)
     violations: list[str] = []
 
     _check_merge_commits(diff_range, violations)
@@ -178,8 +202,8 @@ def main() -> int:
         return 0
 
     print("Architecture guard: failed")
-    for index, violation in enumerate(violations, start=1):
-        print(f"{index}. {violation}")
+    for i, violation in enumerate(violations, 1):
+        print(f"{i}. {violation}")
     return 1
 
 
