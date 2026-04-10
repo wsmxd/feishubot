@@ -33,6 +33,14 @@ def _ensure_base_ref(base_ref: str) -> str:
         return base_ref
 
 
+def _has_merge_base(base_ref: str) -> bool:
+    try:
+        _run(["git", "merge-base", base_ref, "HEAD"])
+        return True
+    except RuntimeError:
+        return False
+
+
 def _changed_paths(diff_range: str) -> list[str]:
     output = _run(["git", "diff", "--name-only", diff_range])
     if not output:
@@ -155,12 +163,29 @@ def main() -> int:
     base_ref = _ensure_base_ref(args.base_ref)
     diff_range = f"{base_ref}...HEAD"
 
-    changed_paths = _changed_paths(diff_range)
+    if not _has_merge_base(base_ref):
+        print("Architecture guard: failed")
+        print(
+            "1. 无法找到 PR 分支与基线分支的共同提交（no merge base）。"
+            "请先将最新 base 分支同步到当前分支后再重试。"
+        )
+        print(f"2. 调试信息: base_ref={base_ref}, diff_range={diff_range}")
+        return 1
+
+    try:
+        changed_paths = _changed_paths(diff_range)
+        name_status = _changed_name_status(diff_range)
+    except RuntimeError as exc:
+        print("Architecture guard: failed")
+        print("1. 计算 PR 差异失败，可能是分支状态异常或基线引用不可用。")
+        print("2. 请先 rebase/merge 基线分支后重新推送，再触发 CI。")
+        print(f"3. 调试信息: {exc}")
+        return 1
+
     if not changed_paths:
         print("Architecture guard: no changed files detected, skipping.")
         return 0
 
-    name_status = _changed_name_status(diff_range)
     violations: list[str] = []
 
     _check_merge_commits(diff_range, violations)
