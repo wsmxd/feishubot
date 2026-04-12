@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from feishubot.ai.orchestrator.agent_loop import AgentLoop
+from feishubot.ai.prompts import build_system_prompt
 from feishubot.ai.providers import create_active_provider
 from feishubot.ai.tools import ToolRuntime
 from feishubot.config import settings
@@ -486,7 +487,7 @@ async def _chat_loop(user_id: str, system_prompt: str | None) -> None:
     agent_loop = AgentLoop(
         model_provider=model_provider,
         tool_runtime=tool_runtime,
-        system_prompt=system_prompt or active.system_prompt,
+        system_prompt=build_system_prompt(active.system_prompt, system_prompt, include_core=False),
     )
 
     print("FeishuBot terminal chat is ready.")

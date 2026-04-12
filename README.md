@@ -114,6 +114,7 @@ feishubot-chat --user-id demo-user
 - 默认读取 `tools.default.toml`（仓库根目录，真实运行配置）
 - 通过 `AI_TOOLS_CONFIG_PATH` 覆盖配置文件路径（可参考 `src/feishubot/ai/configs/tools.example.toml`）
 - 支持 `enabled_tools` 控制可用工具集合
+- `soul_memory` 默认关闭，需要明确开启后才允许模型写入 `SOUL.md`
 - 支持 `routing.<tool>.timeout_seconds` 覆盖工具默认超时
 - 支持 `terminal.blocked_commands` 定义禁用命令片段（命中即拒绝执行）
 
@@ -143,6 +144,19 @@ curl -X POST http://127.0.0.1:8000/api/llm/chat \
     "user_id": "demo-user"
   }'
 ```
+
+也支持更适合 curl 的统一入口：
+
+```bash
+curl "http://127.0.0.1:8000/api/chat?message=你好&user_id=demo-user"
+curl -X POST http://127.0.0.1:8000/api/chat \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode "message=你好，给我一个简短回复"
+```
+
+`/api/chat` 和 `/api/llm/chat` 现在是同一个网关能力的两个别名，后续飞书侧转发时可以直接复用这套请求格式。
+
+核心人格文件位于 `src/feishubot/ai/prompts/system/SOUL.md`，启动时会自动加载；后续如果需要更新用户姓名、称呼、习惯或爱好，可以直接改这个文件，或通过代码里的 `save_soul_prompt()` 写回。
 
 ## 5. 飞书侧配置（后续）
 
