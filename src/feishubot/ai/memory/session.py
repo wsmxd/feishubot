@@ -575,7 +575,8 @@ class SessionManager:
                     # 处理每个聊天区块
                     for block in chat_blocks:
                         user_id = block["user_id"]
-                        if user_id:
+                        if user_id and user_id not in user_data:
+                            # 只处理不在缓存中的用户
                             # 计算此区块的消息数（用户+机器人）
                             block_message_count = 2
 
@@ -645,7 +646,7 @@ class SessionManager:
         try:
             expired_count = 0
             cutoff_date = datetime.now() - timedelta(days=days)
-            sessions = self.list_sessions()
+            sessions = self.list_sessions(include_expired=True)
 
             for session_info in sessions:
                 updated_at_str = session_info.get("updated_at", "")
@@ -734,7 +735,7 @@ class SessionManager:
         """
         try:
             cleanup_count = 0
-            sessions = self.list_sessions()
+            sessions = self.list_sessions(include_expired=True)
 
             for session_info in sessions:
                 user_id = session_info.get("key", "")

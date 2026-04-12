@@ -168,7 +168,6 @@ class AgentLoop:
             tool_call = _extract_tool_call(model_reply)
             if tool_call is None:
                 # 直接回答，保存会话
-                model_reply = await self._generate_model_reply(prompt=prompt, user_id=user_id)
                 # 保存对话到会话记忆
                 if user_id:
                     self._session_manager.save_chat_history(

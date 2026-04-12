@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from feishubot.ai.memory import SessionManager
 from feishubot.ai.orchestrator.agent_loop import AgentLoop
 from feishubot.ai.prompts import build_system_prompt
 from feishubot.ai.providers import create_active_provider
@@ -32,6 +33,12 @@ LLM_PRESETS: dict[str, dict[str, str]] = {
         "base_url": "https://api.deepseek.com",
         "model": "deepseek-chat",
         "chat_path": "/v1/chat/completions",
+    },
+    "glm": {
+        "label": "GLM-4",
+        "base_url": "https://open.bigmodel.cn/api/paas/v4/",
+        "model": "glm-4",
+        "chat_path": "/chat/completions",
     },
 }
 
@@ -84,6 +91,21 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Switch directly to a model name without interactive prompt",
     )
+
+    session_parser = subparsers.add_parser("session", help="Manage sessions")
+    session_subparsers = session_parser.add_subparsers(dest="session_command")
+
+    # List sessions
+    session_subparsers.add_parser("list", help="List all sessions")
+
+    # Cleanup expired sessions
+    cleanup_parser = session_subparsers.add_parser("cleanup", help="Clean up expired sessions")
+    cleanup_parser.add_argument(
+        "--days", type=int, default=30, help="Days after which a session is considered expired"
+    )
+
+    # Cleanup all sessions
+    session_subparsers.add_parser("cleanup-all", help="Clean up all sessions")
 
     return parser
 
@@ -307,9 +329,10 @@ def _run_setup(args: argparse.Namespace) -> None:
             ("1", f"qwen - {LLM_PRESETS['qwen']['label']}"),
             ("2", f"kimi - {LLM_PRESETS['kimi']['label']}"),
             ("3", f"deepseek - {LLM_PRESETS['deepseek']['label']}"),
-            ("4", "echo (for local smoke testing)"),
+            ("4", f"glm - {LLM_PRESETS['glm']['label']}"),
+            ("5", "echo (for local smoke testing)"),
         ],
-        default_key="4" if current.get("LLM_PROVIDER") == "echo" else "1",
+        default_key="5" if current.get("LLM_PROVIDER") == "echo" else "1",
     )
 
     selected_preset_key = ""
@@ -319,8 +342,10 @@ def _run_setup(args: argparse.Namespace) -> None:
         selected_preset_key = "kimi"
     elif model_choice == "3":
         selected_preset_key = "deepseek"
+    elif model_choice == "4":
+        selected_preset_key = "glm"
 
-    provider_value = "echo" if model_choice == "4" else "openai_compatible"
+    provider_value = "echo" if model_choice == "5" else "openai_compatible"
 
     values: dict[str, str] = {
         "APP_ENV": _prompt_text("APP_ENV", current.get("APP_ENV", "dev")),
@@ -566,6 +591,30 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "model":
         _run_model_switch(args)
+        return
+
+    if args.command == "session":
+        session_manager = SessionManager()
+        if args.session_command == "list":
+            sessions = session_manager.list_sessions()
+            if not sessions:
+                print("No sessions found.")
+            else:
+                print("Sessions:")
+                for session in sessions:
+                    print(f"  User ID: {session['key']}")
+                    print(f"  Created: {session['created_at']}")
+                    print(f"  Updated: {session['updated_at']}")
+                    print(f"  Messages: {session['message_count']}")
+                    print()
+        elif args.session_command == "cleanup":
+            count = session_manager.cleanup_expired_sessions(days=args.days)
+            print(f"Cleaned up {count} expired sessions.")
+        elif args.session_command == "cleanup-all":
+            count = session_manager.cleanup_all_sessions()
+            print(f"Cleaned up {count} sessions.")
+        else:
+            parser.print_help()
         return
 
     parser.print_help()
