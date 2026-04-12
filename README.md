@@ -156,7 +156,7 @@ curl -X POST http://127.0.0.1:8000/api/chat \
 
 `/api/chat` 和 `/api/llm/chat` 现在是同一个网关能力的两个别名，后续飞书侧转发时可以直接复用这套请求格式。
 
-核心人格文件位于 `src/feishubot/ai/prompts/system/SOUL.md`，启动时会自动加载；后续如果需要更新用户姓名、称呼、习惯或爱好，可以直接改这个文件，或通过代码里的 `save_soul_prompt()` 写回。
+核心人格文件运行时路径默认为 `~/.feishubot/SOUL.md`（可通过 `SOUL_PROMPT_PATH` 覆盖）；`src/feishubot/ai/prompts/system/SOUL.md` 仅作为初始模板。后续如果需要更新用户姓名、称呼、习惯或爱好，可通过 `soul_memory` 工具或 `save_soul_prompt()` 写回运行时文件，但前提是已在工具配置中显式开启该工具。
 
 ## 5. 飞书侧配置（后续）
 
