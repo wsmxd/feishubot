@@ -5,6 +5,7 @@ from json import JSONDecodeError, JSONDecoder
 from typing import Any
 
 from feishubot.ai.core.schemas import ChatMessage
+from feishubot.ai.memory import SessionManager
 from feishubot.ai.providers.base import ModelProvider
 from feishubot.ai.tools.runtime import ToolRuntime
 
@@ -71,18 +72,36 @@ class AgentLoop:
         model_provider: ModelProvider,
         tool_runtime: ToolRuntime,
         system_prompt: str | None = None,
+        session_manager: SessionManager | None = None,
     ) -> None:
         self._model_provider = model_provider
         self._tool_runtime = tool_runtime
         self._system_prompt = system_prompt
+        self._session_manager = session_manager or SessionManager(
+            max_history=50, store_sensitive=False
+        )
 
-    async def _generate_model_reply(self, *, prompt: str, user_id: str | None = None) -> str:
+    async def _generate_model_reply(
+        self,
+        prompt: str,
+        user_id: str | None = None,
+    ) -> str:
         messages: list[ChatMessage] = []
         if self._system_prompt:
             messages.append(ChatMessage(role="system", content=self._system_prompt))
-        messages.append(ChatMessage(role="user", content=prompt))
+
+        # 添加历史消息到会话
+        if user_id:
+            history = self._session_manager.get_history(user_id)
+            for msg in history:
+                messages.append(ChatMessage(role=msg["role"], content=msg["content"]))
+
+        # 添加当前用户输入
+        user_message = ChatMessage(role="user", content=prompt)
+        messages.append(user_message)
 
         response = await self._model_provider.chat(messages=messages, user_id=user_id)
+
         return response.text
 
     def _build_tool_routing_prompt(self, user_input: str) -> str:
@@ -144,9 +163,16 @@ class AgentLoop:
         forced_final_note = ""
 
         for turn in range(self._MAX_TOOL_TURNS):
+            # 不保存中间轮次的会话
             model_reply = await self._generate_model_reply(prompt=prompt, user_id=user_id)
             tool_call = _extract_tool_call(model_reply)
             if tool_call is None:
+                # 直接回答，保存会话
+                # 保存对话到会话记忆
+                if user_id:
+                    self._session_manager.save_chat_history(
+                        user_input=user_input, bot_response=model_reply, user_id=user_id
+                    )
                 return model_reply
 
             tool_name, arguments = tool_call
@@ -241,4 +267,11 @@ class AgentLoop:
             + (forced_final_note + "\n\n" if forced_final_note else "")
             + "Do not call any more tools. Answer the user directly now."
         )
-        return await self._generate_model_reply(prompt=final_prompt, user_id=user_id)
+        # 最终回答，保存会话
+        final_reply = await self._generate_model_reply(prompt=final_prompt, user_id=user_id)
+        # 保存对话到会话记忆
+        if user_id:
+            self._session_manager.save_chat_history(
+                user_input=user_input, bot_response=final_reply, user_id=user_id
+            )
+        return final_reply
