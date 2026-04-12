@@ -21,7 +21,11 @@ class SoulMemoryArguments(BaseModel):
 class SoulMemoryTool(Tool):
     name = "soul_memory"
     description = (
-        "Update the startup persona file SOUL.md with stable user identity and preferences."
+        "Update the startup persona file SOUL.md with stable user identity and preferences. "
+        "At least one of the following parameters must be provided: "
+        "user_name (用户姓名), assistant_name (助手名), habits (用户习惯), hobbies (用户爱好), "
+        "preferences (用户偏好), or notes (更新备注). "
+        'Example: {"tool": "soul_memory", "arguments": {"user_name": "张三", "notes": "喜欢编程"}}'
     )
     args_model = SoulMemoryArguments
     _MAX_RECENT_UPDATES = 3
@@ -187,7 +191,11 @@ class SoulMemoryTool(Tool):
         if not changes:
             return {
                 "status": "no_changes",
-                "reason": "No parameters were provided; only formatting was applied",
+                "error": (
+                    "No parameters provided. Need at least one of: "
+                    "user_name, assistant_name, habits, hobbies, preferences, notes."
+                ),
+                "hint": '{"user_name": "名字", "notes": "新信息"}',
                 "updated_fields": [],
                 "path": "SOUL.md",
             }
