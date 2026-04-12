@@ -1,4 +1,4 @@
-enabled_tools = ["web_search", "calculator", "terminal"]
+enabled_tools = ["web_search", "calculator", "terminal", "soul_memory"]
 
 [routing.web_search]
 timeout_seconds = 20

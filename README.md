@@ -144,6 +144,19 @@ curl -X POST http://127.0.0.1:8000/api/llm/chat \
   }'
 ```
 
+也支持更适合 curl 的统一入口：
+
+```bash
+curl "http://127.0.0.1:8000/api/chat?message=你好&user_id=demo-user"
+curl -X POST http://127.0.0.1:8000/api/chat \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode "message=你好，给我一个简短回复"
+```
+
+`/api/chat` 和 `/api/llm/chat` 现在是同一个网关能力的两个别名，后续飞书侧转发时可以直接复用这套请求格式。
+
+核心人格文件位于 `src/feishubot/ai/prompts/system/SOUL.md`，启动时会自动加载；后续如果需要更新用户姓名、称呼、习惯或爱好，可以直接改这个文件，或通过代码里的 `save_soul_prompt()` 写回。
+
 ## 5. 飞书侧配置（后续）
 
 - 在飞书开发者后台创建应用并开启机器人能力

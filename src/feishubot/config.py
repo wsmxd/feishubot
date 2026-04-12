@@ -7,6 +7,8 @@ from typing import Any
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from feishubot.ai.prompts import build_system_prompt
+
 
 @dataclass(frozen=True)
 class ActiveLLMConfig:
@@ -87,7 +89,9 @@ class Settings(BaseSettings):
         model = str(active_config.get("model", ""))
         chat_path = str(active_config.get("chat_path", "/v1/chat/completions"))
         timeout_seconds_raw = active_config.get("timeout_seconds", self.llm_timeout_seconds)
-        system_prompt = str(active_config.get("system_prompt", self.llm_system_prompt))
+        system_prompt = build_system_prompt(
+            str(active_config.get("system_prompt", self.llm_system_prompt))
+        )
 
         try:
             timeout_seconds = float(timeout_seconds_raw)
@@ -120,7 +124,7 @@ class Settings(BaseSettings):
             model=self.llm_model,
             chat_path=self.llm_chat_path,
             timeout_seconds=self.llm_timeout_seconds,
-            system_prompt=self.llm_system_prompt,
+            system_prompt=build_system_prompt(self.llm_system_prompt),
         )
 
 
