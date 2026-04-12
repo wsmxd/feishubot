@@ -182,6 +182,16 @@ class SoulMemoryTool(Tool):
         if updated == current:
             return {"status": "unchanged", "updated_fields": [], "path": "SOUL.md"}
 
+        # Only save and report as "updated" if there were actual field changes.
+        # If changes is empty, it means only formatting was applied without content updates.
+        if not changes:
+            return {
+                "status": "no_changes",
+                "reason": "No parameters were provided; only formatting was applied",
+                "updated_fields": [],
+                "path": "SOUL.md",
+            }
+
         save_soul_prompt(updated)
         return {
             "status": "updated",

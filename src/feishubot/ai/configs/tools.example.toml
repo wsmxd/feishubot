@@ -1,7 +1,6 @@
-# WARNING: `soul_memory` is intentionally disabled in this example config.
-# It persists user-controlled content into a system prompt file and should
-# only be enabled after explicit administrative opt-in.
-enabled_tools = ["web_search", "calculator", "terminal"]
+# `soul_memory` is enabled so stable user profile updates can be persisted
+# into the startup SOUL prompt file.
+enabled_tools = ["web_search", "calculator", "terminal", "soul_memory"]
 
 [routing.web_search]
 timeout_seconds = 20
