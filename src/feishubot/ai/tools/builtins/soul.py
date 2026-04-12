@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from feishubot.ai.prompts import load_soul_prompt, save_soul_prompt
+from feishubot.ai.prompts import get_soul_prompt_path, load_soul_prompt, save_soul_prompt
 from feishubot.ai.tools.base import Tool
 
 
@@ -30,6 +30,10 @@ class SoulMemoryTool(Tool):
     args_model = SoulMemoryArguments
     _MAX_RECENT_UPDATES = 3
     _MAX_SNIPPET_LENGTH = 120
+
+    @staticmethod
+    def _result_path() -> str:
+        return str(get_soul_prompt_path())
 
     @staticmethod
     def _normalize_text(value: str, *, max_length: int) -> str:
@@ -183,11 +187,6 @@ class SoulMemoryTool(Tool):
             recent_updates=recent_updates,
         )
 
-        if updated == current:
-            return {"status": "unchanged", "updated_fields": [], "path": "SOUL.md"}
-
-        # Only save and report as "updated" if there were actual field changes.
-        # If changes is empty, it means only formatting was applied without content updates.
         if not changes:
             return {
                 "status": "no_changes",
@@ -197,12 +196,15 @@ class SoulMemoryTool(Tool):
                 ),
                 "hint": '{"user_name": "名字", "notes": "新信息"}',
                 "updated_fields": [],
-                "path": "SOUL.md",
+                "path": self._result_path(),
             }
+
+        if updated == current:
+            return {"status": "unchanged", "updated_fields": [], "path": self._result_path()}
 
         save_soul_prompt(updated)
         return {
             "status": "updated",
             "updated_fields": changes,
-            "path": "SOUL.md",
+            "path": self._result_path(),
         }
