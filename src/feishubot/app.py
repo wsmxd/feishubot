@@ -10,12 +10,12 @@ from pydantic import BaseModel, Field
 
 from feishubot.ai.core.errors import ProviderNotFoundError
 from feishubot.ai.orchestrator import AgentLoop
+from feishubot.ai.orchestrator.feishu_events import build_event_dispatcher
 from feishubot.ai.prompts import build_system_prompt
 from feishubot.ai.providers import ModelProvider, create_provider
 from feishubot.ai.tools import ToolRuntime
 from feishubot.config import settings
 from feishubot.feishu import FeishuClient
-from feishubot.feishu_events import build_event_dispatcher
 
 app = FastAPI(title="FeishuBot", version="0.1.0")
 

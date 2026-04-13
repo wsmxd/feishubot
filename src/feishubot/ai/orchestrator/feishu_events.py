@@ -7,7 +7,7 @@ from typing import Any
 
 import lark_oapi as lark
 
-from feishubot.ai.orchestrator import AgentLoop
+from feishubot.ai.orchestrator.agent_loop import AgentLoop
 from feishubot.ai.prompts import build_system_prompt
 from feishubot.ai.providers import create_active_provider
 from feishubot.ai.tools import ToolRuntime
