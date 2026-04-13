@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,6 +9,22 @@ from typing import Any
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from feishubot.ai.prompts import build_system_prompt
+
+
+def _resolve_env_file() -> str:
+    configured_env_file = os.getenv("FEISHUBOT_ENV_FILE", "").strip()
+    if configured_env_file:
+        return str(Path(configured_env_file).expanduser())
+
+    cwd_env_file = Path.cwd() / ".env"
+    if cwd_env_file.exists():
+        return str(cwd_env_file)
+
+    home_env_file = Path.home() / ".feishubot" / ".env"
+    if home_env_file.exists():
+        return str(home_env_file)
+
+    return str(home_env_file)
 
 
 @dataclass(frozen=True)
@@ -23,7 +40,9 @@ class ActiveLLMConfig:
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=_resolve_env_file(), env_file_encoding="utf-8", extra="ignore"
+    )
 
     app_env: str = "dev"
     log_level: str = "INFO"

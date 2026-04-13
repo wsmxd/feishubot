@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib.resources
 import json
 import tomllib
 from collections.abc import Sequence
@@ -41,6 +42,33 @@ LLM_PRESETS: dict[str, dict[str, str]] = {
         "chat_path": "/chat/completions",
     },
 }
+
+
+_DEFAULT_ENV_FILE = "~/.feishubot/.env"
+_DEFAULT_TOOLS_CONFIG = "tools.toml"
+_FALLBACK_TOOLS_TOML = """# `soul_memory` is enabled by default to persist stable user profile facts
+# (name, habits, hobbies, preferences) into SOUL.md for better continuity.
+enabled_tools = [\"web_search\", \"calculator\", \"terminal\", \"soul_memory\"]
+
+[routing.web_search]
+timeout_seconds = 20
+
+[routing.calculator]
+timeout_seconds = 5
+
+[routing.terminal]
+timeout_seconds = 30
+
+[routing.soul_memory]
+timeout_seconds = 5
+
+[terminal]
+blocked_commands = [
+    \"rm -rf /\",
+    \"shutdown\",
+    \"reboot\"
+]
+"""
 
 
 def _add_chat_arguments(parser: argparse.ArgumentParser) -> None:
@@ -102,7 +130,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
     setup_parser = subparsers.add_parser("setup", help="Interactive quick setup for .env")
     setup_parser.add_argument(
-        "--env-file", default=".env", help="Path to the environment file to create/update"
+        "--env-file",
+        default=_DEFAULT_ENV_FILE,
+        help="Path to the environment file to create/update",
     )
     setup_parser.add_argument(
         "--yes", action="store_true", help="Skip overwrite confirmation if env file exists"
@@ -112,7 +142,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "model", help="List configured models and switch active model"
     )
     model_parser.add_argument(
-        "--env-file", default=".env", help="Path to the environment file to update"
+        "--env-file",
+        default=_DEFAULT_ENV_FILE,
+        help="Path to the environment file to update",
     )
     model_parser.add_argument(
         "--use",
@@ -272,6 +304,33 @@ def _resolve_models_config_path(config_value: str, env_path: Path) -> Path:
     return path
 
 
+def _resolve_config_path(config_value: str, env_path: Path, default_name: str) -> Path:
+    raw = config_value.strip() or default_name
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        path = (env_path.parent / path).resolve()
+    else:
+        path = path.resolve()
+    return path
+
+
+def _load_packaged_tools_template() -> str:
+    try:
+        template_path = importlib.resources.files("feishubot.ai.configs").joinpath(
+            "tools.example.toml"
+        )
+        return template_path.read_text(encoding="utf-8")
+    except (FileNotFoundError, ModuleNotFoundError):
+        return _FALLBACK_TOOLS_TOML
+
+
+def _ensure_tools_config(path: Path) -> None:
+    if path.exists():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_load_packaged_tools_template(), encoding="utf-8")
+
+
 def _load_models_config(path: Path) -> tuple[str, dict[str, dict[str, str]]]:
     if not path.exists():
         return "", {}
@@ -413,7 +472,7 @@ def _run_setup(args: argparse.Namespace) -> None:
         "LLM_TIMEOUT_SECONDS": current.get("LLM_TIMEOUT_SECONDS", "60"),
         "LLM_SYSTEM_PROMPT": current.get("LLM_SYSTEM_PROMPT", "You are a helpful assistant."),
         "LLM_MODELS_CONFIG_PATH": current.get("LLM_MODELS_CONFIG_PATH", "models.toml"),
-        "AI_TOOLS_CONFIG_PATH": current.get("AI_TOOLS_CONFIG_PATH", ""),
+        "AI_TOOLS_CONFIG_PATH": current.get("AI_TOOLS_CONFIG_PATH", _DEFAULT_TOOLS_CONFIG),
     }
 
     if provider_value == "openai_compatible":
@@ -455,6 +514,11 @@ def _run_setup(args: argparse.Namespace) -> None:
         values["LLM_ACTIVE_MODEL"] = ""
         values["LLM_MODELS_CONFIG_PATH"] = ""
 
+    tools_config_path = _resolve_config_path(
+        values["AI_TOOLS_CONFIG_PATH"], env_path, _DEFAULT_TOOLS_CONFIG
+    )
+    _ensure_tools_config(tools_config_path)
+
     env_path.parent.mkdir(parents=True, exist_ok=True)
     _write_env_file(env_path, values)
 
@@ -465,6 +529,8 @@ def _run_setup(args: argparse.Namespace) -> None:
     print("Next steps:")
     print("  1) Start chat: feishubot chat")
     print("  2) Start gateway: feishubot gateway --reload")
+    print(f"  3) Env file path: {env_path}")
+    print(f"  4) Tools config path: {tools_config_path}")
 
 
 def _run_model_switch(args: argparse.Namespace) -> None:

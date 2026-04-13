@@ -33,6 +33,32 @@ feishubot/
 
 ## 2. 快速开始
 
+### 2.0 使用 uvx 直接运行（推荐发布版）
+
+发布到 PyPI 后，可不克隆仓库直接运行：
+
+```bash
+# 1) 先执行交互式配置（会写入 ~/.feishubot/.env）
+uvx --from FeishuBot feishubot setup
+
+# 2) 直接启动终端对话
+uvx --from FeishuBot feishubot chat
+
+# 3) 或启动网关
+uvx --from FeishuBot feishubot gateway --host 0.0.0.0 --port 8000
+```
+
+配置文件说明：
+
+- 默认环境文件路径：`~/.feishubot/.env`
+- 默认工具配置路径：`~/.feishubot/tools.toml`
+- 若当前目录存在 `.env`，会优先读取当前目录配置（便于本地开发）
+- 可通过 `FEISHUBOT_ENV_FILE` 显式指定环境文件：
+
+```bash
+FEISHUBOT_ENV_FILE=~/work/feishubot/.env uvx --from FeishuBot feishubot chat
+```
+
 一键下载并运行（推荐）：
 
 ```bash
@@ -95,6 +121,7 @@ feishubot setup
 会进入交互式向导，快速选择 LLM 提供商（`echo` / `openai_compatible`）并写入 `.env`。
 当前内置大模型预设：`qwen`、`kimi`、`deepseek`。
 该向导会写入 `LLM_MODELS_CONFIG_PATH` 和 `LLM_ACTIVE_MODEL`，用于维护多个模型并快速切换。
+在默认配置下，还会自动创建 `~/.feishubot/tools.toml` 作为工具运行配置。
 
 说明：
 
