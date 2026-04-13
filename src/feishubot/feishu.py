@@ -2,61 +2,49 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from uuid import uuid4
 
-import httpx
+import lark_oapi as lark
+from lark_oapi.api.im.v1 import CreateMessageRequest, CreateMessageRequestBody
 
 
 class FeishuClient:
     def __init__(self, app_id: str, app_secret: str) -> None:
-        self._app_id = app_id
-        self._app_secret = app_secret
-        self._tenant_access_token: str | None = None
-
-    async def _refresh_tenant_access_token(self) -> str:
-        url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
-        payload = {
-            "app_id": self._app_id,
-            "app_secret": self._app_secret,
-        }
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(url, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-
-        if data.get("code") != 0:
-            raise RuntimeError(f"failed to get tenant_access_token: {data}")
-
-        token = data.get("tenant_access_token")
-        if not token:
-            raise RuntimeError("tenant_access_token missing in response")
-
-        self._tenant_access_token = token
-        return token
-
-    async def get_tenant_access_token(self) -> str:
-        if self._tenant_access_token:
-            return self._tenant_access_token
-        return await self._refresh_tenant_access_token()
+        self._client = (
+            lark.Client.builder()
+            .app_id(app_id)
+            .app_secret(app_secret)
+            .domain(lark.FEISHU_DOMAIN)
+            .build()
+        )
 
     async def send_text_message(
         self, receive_id: str, text: str, receive_id_type: str = "open_id"
     ) -> dict[str, Any]:
-        token = await self.get_tenant_access_token()
-        url = "https://open.feishu.cn/open-apis/im/v1/messages"
-        headers = {"Authorization": f"Bearer {token}"}
-        params = {"receive_id_type": receive_id_type}
-        payload = {
-            "receive_id": receive_id,
-            "msg_type": "text",
-            "content": json.dumps({"text": text}, ensure_ascii=False),
+        request = (
+            CreateMessageRequest.builder()
+            .receive_id_type(receive_id_type)
+            .request_body(
+                CreateMessageRequestBody.builder()
+                .receive_id(receive_id)
+                .msg_type("text")
+                .content(json.dumps({"text": text}, ensure_ascii=False))
+                .uuid(str(uuid4()))
+                .build()
+            )
+            .build()
+        )
+
+        response = await self._client.im.v1.message.acreate(request)
+        if not response.success():
+            raise RuntimeError(
+                "failed to send feishu message: "
+                f"code={response.code}, msg={response.msg}, log_id={response.get_log_id()}"
+            )
+
+        message_id = response.data.message_id if response.data else None
+        return {
+            "code": response.code,
+            "msg": response.msg,
+            "data": {"message_id": message_id},
         }
-
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(url, headers=headers, params=params, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-
-        if data.get("code") != 0:
-            raise RuntimeError(f"failed to send feishu message: {data}")
-
-        return data

@@ -4,7 +4,8 @@ import json
 from typing import Any
 from urllib.parse import parse_qs
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
+from lark_oapi.core.model import RawRequest
 from pydantic import BaseModel, Field
 
 from feishubot.ai.core.errors import ProviderNotFoundError
@@ -14,6 +15,7 @@ from feishubot.ai.providers import ModelProvider, create_provider
 from feishubot.ai.tools import ToolRuntime
 from feishubot.config import settings
 from feishubot.feishu import FeishuClient
+from feishubot.feishu_events import build_event_dispatcher
 
 app = FastAPI(title="FeishuBot", version="0.1.0")
 
@@ -21,6 +23,7 @@ feishu_client = FeishuClient(
     app_id=settings.feishu_app_id,
     app_secret=settings.feishu_app_secret,
 )
+feishu_event_dispatcher = build_event_dispatcher()
 
 
 def get_model_provider() -> ModelProvider:
@@ -41,6 +44,20 @@ class ChatResponse(BaseModel):
     provider: str
     model: str
     reply: str
+
+
+class FeishuPushRequest(BaseModel):
+    receive_id: str = Field(min_length=1)
+    text: str = Field(min_length=1)
+    receive_id_type: str = "open_id"
+
+
+class FeishuRelayRequest(BaseModel):
+    message: str = Field(min_length=1)
+    receive_id: str = Field(min_length=1)
+    receive_id_type: str = "open_id"
+    user_id: str | None = None
+    system_prompt: str | None = None
 
 
 def _coerce_first_value(values: list[str] | None) -> str | None:
@@ -118,6 +135,39 @@ async def _extract_chat_request(request: Request) -> ChatRequest:
     return ChatRequest(message=message, user_id=user_id, system_prompt=system_prompt)
 
 
+def _ensure_feishu_configured() -> None:
+    if not settings.feishu_app_id or not settings.feishu_app_secret:
+        raise HTTPException(
+            status_code=500,
+            detail="FEISHU_APP_ID and FEISHU_APP_SECRET must be configured",
+        )
+
+
+def _validate_internal_api_key(request: Request) -> None:
+    expected_api_key = settings.gateway_internal_api_key.strip()
+    if not expected_api_key:
+        return
+
+    provided_api_key = request.headers.get("x-api-key", "").strip()
+    if provided_api_key != expected_api_key:
+        raise HTTPException(status_code=401, detail="invalid internal api key")
+
+
+async def _run_agent(
+    message: str, user_id: str | None, system_prompt: str | None = None
+) -> ChatResponse:
+    active = settings.active_llm_config()
+    model_provider = get_model_provider()
+    agent_loop = AgentLoop(
+        model_provider=model_provider,
+        tool_runtime=ToolRuntime(),
+        system_prompt=build_system_prompt(active.system_prompt, system_prompt, include_core=False),
+    )
+    reply = await agent_loop.run(user_input=message, user_id=user_id)
+
+    return ChatResponse(provider=active.provider, model=active.model, reply=reply)
+
+
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
     return {"status": "ok"}
@@ -127,72 +177,78 @@ async def healthz() -> dict[str, str]:
 @app.api_route("/api/llm/chat", methods=["GET", "POST"], response_model=ChatResponse)
 async def chat_with_llm(request: Request) -> ChatResponse:
     payload = await _extract_chat_request(request)
-    active = settings.active_llm_config()
-    model_provider = get_model_provider()
-    agent_loop = AgentLoop(
-        model_provider=model_provider,
-        tool_runtime=ToolRuntime(),
-        system_prompt=build_system_prompt(
-            active.system_prompt, payload.system_prompt, include_core=False
-        ),
-    )
-    reply = await agent_loop.run(user_input=payload.message, user_id=payload.user_id)
+    return await _run_agent(payload.message, payload.user_id, payload.system_prompt)
 
-    return ChatResponse(
-        provider=active.provider,
-        model=active.model,
-        reply=reply,
+
+@app.post("/api/feishu/push")
+async def push_feishu_message(payload: FeishuPushRequest, request: Request) -> dict[str, Any]:
+    _validate_internal_api_key(request)
+    _ensure_feishu_configured()
+
+    data = await feishu_client.send_text_message(
+        receive_id=payload.receive_id,
+        text=payload.text,
+        receive_id_type=payload.receive_id_type,
     )
+
+    message_id = None
+    if isinstance(data.get("data"), dict):
+        message_id = data["data"].get("message_id")
+
+    return {"ok": True, "message_id": message_id}
+
+
+@app.post("/api/feishu/relay")
+async def relay_feishu_message(payload: FeishuRelayRequest, request: Request) -> dict[str, Any]:
+    _validate_internal_api_key(request)
+    _ensure_feishu_configured()
+
+    llm_result = await _run_agent(payload.message, payload.user_id, payload.system_prompt)
+    data = await feishu_client.send_text_message(
+        receive_id=payload.receive_id,
+        text=llm_result.reply,
+        receive_id_type=payload.receive_id_type,
+    )
+
+    message_id = None
+    if isinstance(data.get("data"), dict):
+        message_id = data["data"].get("message_id")
+
+    return {
+        "ok": True,
+        "provider": llm_result.provider,
+        "model": llm_result.model,
+        "reply": llm_result.reply,
+        "message_id": message_id,
+    }
 
 
 @app.post("/webhook/feishu/events")
-async def handle_feishu_events(request: Request) -> dict[str, Any]:
-    body = await request.json()
+async def handle_feishu_events(request: Request) -> Response | dict[str, str]:
+    body = await request.body()
+    if not body:
+        raise HTTPException(status_code=400, detail="request body is required")
 
-    # URL verification handshake required by Feishu event subscription.
-    if body.get("type") == "url_verification":
-        return {"challenge": body.get("challenge")}
-
-    # Optional verification token check.
-    if settings.feishu_verification_token:
-        token = body.get("token")
-        if token != settings.feishu_verification_token:
-            raise HTTPException(status_code=401, detail="invalid verification token")
-
-    event = body.get("event", {})
-    message = event.get("message", {})
-    sender = event.get("sender", {})
-
-    raw_content = message.get("content", "")
-    text = raw_content
-    if isinstance(raw_content, str):
+    if not settings.feishu_verification_token and not settings.feishu_encrypt_key:
         try:
-            parsed = json.loads(raw_content)
-            if isinstance(parsed, dict):
-                text = parsed.get("text") or raw_content
-        except json.JSONDecodeError:
-            text = raw_content
+            payload = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=400, detail="invalid event payload") from exc
 
-    if not text:
-        return {"ok": True, "ignored": "empty message content"}
+        if payload.get("type") == "url_verification":
+            return {"challenge": payload.get("challenge")}
 
-    user_open_id = sender.get("sender_id", {}).get("open_id")
-    chat_id = event.get("message", {}).get("chat_id")
+        feishu_event_dispatcher.do_without_validation(body)
+        return {"msg": "success"}
 
-    model_provider = get_model_provider()
-    agent_loop = AgentLoop(
-        model_provider=model_provider,
-        tool_runtime=ToolRuntime(),
-        system_prompt=build_system_prompt(
-            settings.active_llm_config().system_prompt, include_core=False
-        ),
+    raw_request = RawRequest()
+    raw_request.uri = request.url.path
+    raw_request.headers = {k: v for k, v in request.headers.items()}
+    raw_request.body = body
+
+    raw_response = feishu_event_dispatcher.do(raw_request)
+    return Response(
+        content=raw_response.content or b"",
+        status_code=raw_response.status_code or 200,
+        headers=raw_response.headers,
     )
-    reply = await agent_loop.run(user_input=text, user_id=user_open_id)
-
-    # For private/group chat replies, send by chat_id. Adjust receive_id_type if needed.
-    if chat_id:
-        await feishu_client.send_text_message(
-            receive_id=chat_id, text=reply, receive_id_type="chat_id"
-        )
-
-    return {"ok": True}
