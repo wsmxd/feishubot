@@ -22,6 +22,8 @@ class SoulMemoryTool(Tool):
     name = "soul_memory"
     description = (
         "Update the startup persona file SOUL.md with stable user identity and preferences. "
+        "Use this tool proactively when user messages contain long-term profile facts "
+        "that should persist across sessions. "
         "At least one of the following parameters must be provided: "
         "user_name (用户姓名), assistant_name (助手名), habits (用户习惯), hobbies (用户爱好), "
         "preferences (用户偏好), or notes (更新备注). "
