@@ -72,6 +72,34 @@ def _build_parser() -> argparse.ArgumentParser:
         "--reload", action="store_true", help="Enable auto-reload for development"
     )
 
+    events_parser = subparsers.add_parser(
+        "events", help="Start Feishu long-connection event receiver"
+    )
+    events_parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"],
+        help="Log level for lark-oapi websocket client",
+    )
+    events_parser.add_argument(
+        "--no-fallback-webhook",
+        action="store_true",
+        help="Disable fallback to webhook gateway when long connection is unavailable",
+    )
+    events_parser.add_argument(
+        "--fallback-host",
+        default="0.0.0.0",  # noqa: S104 - intentional default for dev/container access
+        help="Fallback webhook gateway bind host",
+    )
+    events_parser.add_argument(
+        "--fallback-port", type=int, default=8000, help="Fallback webhook gateway bind port"
+    )
+    events_parser.add_argument(
+        "--fallback-reload",
+        action="store_true",
+        help="Enable auto-reload when fallback webhook gateway starts",
+    )
+
     setup_parser = subparsers.add_parser("setup", help="Interactive quick setup for .env")
     setup_parser.add_argument(
         "--env-file", default=".env", help="Path to the environment file to create/update"
@@ -212,10 +240,12 @@ def _write_env_file(path: Path, values: dict[str, str]) -> None:
     keys_in_order = [
         "APP_ENV",
         "LOG_LEVEL",
+        "DEFAULT_CHANNEL",
         "FEISHU_APP_ID",
         "FEISHU_APP_SECRET",
         "FEISHU_VERIFICATION_TOKEN",
         "FEISHU_ENCRYPT_KEY",
+        "GATEWAY_INTERNAL_API_KEY",
         "LLM_PROVIDER",
         "LLM_ACTIVE_MODEL",
         "LLM_BASE_URL",
@@ -347,14 +377,33 @@ def _run_setup(args: argparse.Namespace) -> None:
 
     provider_value = "echo" if model_choice == "5" else "openai_compatible"
 
+    feishu_verification_token = current.get("FEISHU_VERIFICATION_TOKEN", "")
+    feishu_encrypt_key = current.get("FEISHU_ENCRYPT_KEY", "")
+    configure_feishu_security = _prompt_yes_no(
+        "Configure optional FEISHU_VERIFICATION_TOKEN / FEISHU_ENCRYPT_KEY",
+        default=bool(feishu_verification_token or feishu_encrypt_key),
+    )
+    if configure_feishu_security:
+        feishu_verification_token = _prompt_text(
+            "FEISHU_VERIFICATION_TOKEN (optional)",
+            feishu_verification_token,
+        )
+        feishu_encrypt_key = _prompt_text(
+            "FEISHU_ENCRYPT_KEY (optional)",
+            feishu_encrypt_key,
+        )
+
     values: dict[str, str] = {
         "APP_ENV": _prompt_text("APP_ENV", current.get("APP_ENV", "dev")),
         "LOG_LEVEL": _prompt_text("LOG_LEVEL", current.get("LOG_LEVEL", "INFO")),
-        # Keep Feishu fields untouched during quick setup.
-        "FEISHU_APP_ID": current.get("FEISHU_APP_ID", ""),
-        "FEISHU_APP_SECRET": current.get("FEISHU_APP_SECRET", ""),
-        "FEISHU_VERIFICATION_TOKEN": current.get("FEISHU_VERIFICATION_TOKEN", ""),
-        "FEISHU_ENCRYPT_KEY": current.get("FEISHU_ENCRYPT_KEY", ""),
+        "DEFAULT_CHANNEL": current.get("DEFAULT_CHANNEL", "feishu"),
+        "FEISHU_APP_ID": _prompt_text("FEISHU_APP_ID", current.get("FEISHU_APP_ID", "")),
+        "FEISHU_APP_SECRET": _prompt_secret(
+            "FEISHU_APP_SECRET", current.get("FEISHU_APP_SECRET", "")
+        ),
+        "FEISHU_VERIFICATION_TOKEN": feishu_verification_token,
+        "FEISHU_ENCRYPT_KEY": feishu_encrypt_key,
+        "GATEWAY_INTERNAL_API_KEY": current.get("GATEWAY_INTERNAL_API_KEY", ""),
         "LLM_PROVIDER": provider_value,
         "LLM_ACTIVE_MODEL": current.get("LLM_ACTIVE_MODEL", ""),
         "LLM_BASE_URL": current.get("LLM_BASE_URL", ""),
@@ -410,6 +459,9 @@ def _run_setup(args: argparse.Namespace) -> None:
     _write_env_file(env_path, values)
 
     print("\nSetup complete.")
+    if not values["FEISHU_APP_ID"] or not values["FEISHU_APP_SECRET"]:
+        print("Warning: FEISHU_APP_ID / FEISHU_APP_SECRET are empty.")
+        print("Long connection mode (feishubot events) requires both values.")
     print("Next steps:")
     print("  1) Start chat: feishubot chat")
     print("  2) Start gateway: feishubot gateway --reload")
@@ -557,20 +609,69 @@ def _run_chat(args: argparse.Namespace) -> None:
 
 
 def _run_gateway(args: argparse.Namespace) -> None:
+    _run_webhook_gateway(args.host, args.port, args.reload)
+
+
+def _run_webhook_gateway(host: str, port: int, reload: bool) -> None:
     import uvicorn
 
-    if args.reload:
+    if reload:
         print("Starting FeishuBot gateway in reload mode.")
     else:
         print("Starting FeishuBot gateway.")
-    print(f"URL: http://{args.host}:{args.port}")
+    print(f"URL: http://{host}:{port}")
     uvicorn.run(
         "feishubot.main:app",
-        host=args.host,
-        port=args.port,
-        reload=args.reload,
+        host=host,
+        port=port,
+        reload=reload,
         log_level=settings.log_level.lower(),
     )
+
+
+def _run_events(args: argparse.Namespace) -> None:
+    import lark_oapi as lark
+
+    from feishubot.ai.orchestrator.feishu_events import (
+        build_event_dispatcher,
+        start_event_worker_loop,
+    )
+
+    if not settings.feishu_app_id or not settings.feishu_app_secret:
+        print("FEISHU_APP_ID and FEISHU_APP_SECRET are required for long connection mode.")
+        return
+
+    log_level_map = {
+        "CRITICAL": lark.LogLevel.CRITICAL,
+        "ERROR": lark.LogLevel.ERROR,
+        "WARNING": lark.LogLevel.WARNING,
+        "INFO": lark.LogLevel.INFO,
+        "DEBUG": lark.LogLevel.DEBUG,
+    }
+    log_level = log_level_map[args.log_level]
+
+    print("Starting Feishu long-connection event receiver.")
+    print("Fallback policy: webhook gateway will start if long connection is unavailable.")
+    print("Press Ctrl+C to stop.")
+
+    start_event_worker_loop()
+    client = lark.ws.Client(
+        settings.feishu_app_id,
+        settings.feishu_app_secret,
+        log_level=log_level,
+        event_handler=build_event_dispatcher(log_level),
+        auto_reconnect=False,
+    )
+    try:
+        client.start()
+    except Exception as exc:  # noqa: BLE001
+        fallback_enabled = not args.no_fallback_webhook
+        if not fallback_enabled:
+            raise
+
+        print(f"Long connection unavailable: {exc}")
+        print("Falling back to webhook gateway mode.")
+        _run_webhook_gateway(args.fallback_host, args.fallback_port, args.fallback_reload)
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -583,6 +684,10 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "gateway":
         _run_gateway(args)
+        return
+
+    if args.command == "events":
+        _run_events(args)
         return
 
     if args.command == "setup":

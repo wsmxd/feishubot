@@ -1,7 +1,6 @@
-# WARNING: `soul_memory` is intentionally disabled by default.
-# It persists user-controlled content into a system prompt file and should
-# only be enabled after explicit administrative opt-in.
-enabled_tools = ["web_search", "calculator", "terminal"]
+# `soul_memory` is enabled by default to persist stable user profile facts
+# (name, habits, hobbies, preferences) into SOUL.md for better continuity.
+enabled_tools = ["web_search", "calculator", "terminal", "soul_memory"]
 
 [routing.web_search]
 timeout_seconds = 20
@@ -11,6 +10,9 @@ timeout_seconds = 5
 
 [routing.terminal]
 timeout_seconds = 30
+
+[routing.soul_memory]
+timeout_seconds = 5
 
 [terminal]
 blocked_commands = [
