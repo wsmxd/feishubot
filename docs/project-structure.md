@@ -23,6 +23,7 @@
 ### Configuration and integration
 
 - `src/feishubot/config.py`: environment-backed settings and active LLM resolution
+- `src/feishubot/channel/`: channel abstraction and concrete channel adapters（默认 `feishu`）
 - `src/feishubot/feishu.py`: Feishu API client
 - `src/feishubot/llm_client.py`: prompt-based LLM client and compatibility reference for the earlier chat flow
 

@@ -22,6 +22,7 @@ feishubot/
 │   │   ├── memory/       # 会话状态抽象
 │   │   └── configs/      # 路由与工具配置样例
 │   ├── config.py         # 环境配置
+│   ├── channel/          # 消息通道抽象层（默认 feishu）
 │   ├── feishu.py         # 飞书 API 客户端（官方 lark-oapi SDK）
 │   ├── llm_client.py     # 大模型抽象与 OpenAI 兼容客户端
 │   └── main.py           # 启动入口
@@ -191,6 +192,7 @@ ngrok http 8000
   - `FEISHU_APP_SECRET`
   - `FEISHU_VERIFICATION_TOKEN`（可选，按你启用方式）
   - `FEISHU_ENCRYPT_KEY`（可选）
+  - `DEFAULT_CHANNEL=feishu`（默认值；后续可扩展其他 channel）
   - `GATEWAY_INTERNAL_API_KEY`（可选，配置后 `/api/feishu/push` 与 `/api/feishu/relay` 需携带 `x-api-key`）
 
 ### 5.1 内部主动推送 API（可选）
