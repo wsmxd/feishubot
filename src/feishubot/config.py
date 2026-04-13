@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     feishu_verification_token: str = ""
     feishu_encrypt_key: str = ""
     gateway_internal_api_key: str = ""
+    default_channel: str = "feishu"
 
     llm_provider: str = "echo"
     llm_base_url: str = ""

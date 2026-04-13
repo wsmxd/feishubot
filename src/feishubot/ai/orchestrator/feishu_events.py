@@ -11,15 +11,12 @@ from feishubot.ai.orchestrator.agent_loop import AgentLoop
 from feishubot.ai.prompts import build_system_prompt
 from feishubot.ai.providers import create_active_provider
 from feishubot.ai.tools import ToolRuntime
+from feishubot.channel import Channel, create_default_channel
 from feishubot.config import settings
-from feishubot.feishu import FeishuClient
 
 logger = logging.getLogger(__name__)
 
-feishu_client = FeishuClient(
-    app_id=settings.feishu_app_id,
-    app_secret=settings.feishu_app_secret,
-)
+channel_client: Channel = create_default_channel()
 
 
 def _extract_text(raw_content: Any) -> str | None:
@@ -74,7 +71,7 @@ async def process_p2_im_message_receive_v1(data: lark.im.v1.P2ImMessageReceiveV1
 
     reply = await _run_agent(text, user_open_id)
     if chat_id:
-        await feishu_client.send_text_message(
+        await channel_client.send_text_message(
             receive_id=chat_id,
             text=reply,
             receive_id_type="chat_id",

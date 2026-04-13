@@ -240,6 +240,7 @@ def _write_env_file(path: Path, values: dict[str, str]) -> None:
     keys_in_order = [
         "APP_ENV",
         "LOG_LEVEL",
+        "DEFAULT_CHANNEL",
         "FEISHU_APP_ID",
         "FEISHU_APP_SECRET",
         "FEISHU_VERIFICATION_TOKEN",
@@ -395,6 +396,7 @@ def _run_setup(args: argparse.Namespace) -> None:
     values: dict[str, str] = {
         "APP_ENV": _prompt_text("APP_ENV", current.get("APP_ENV", "dev")),
         "LOG_LEVEL": _prompt_text("LOG_LEVEL", current.get("LOG_LEVEL", "INFO")),
+        "DEFAULT_CHANNEL": current.get("DEFAULT_CHANNEL", "feishu"),
         "FEISHU_APP_ID": _prompt_text("FEISHU_APP_ID", current.get("FEISHU_APP_ID", "")),
         "FEISHU_APP_SECRET": _prompt_secret(
             "FEISHU_APP_SECRET", current.get("FEISHU_APP_SECRET", "")

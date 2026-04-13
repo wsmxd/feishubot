@@ -14,15 +14,12 @@ from feishubot.ai.orchestrator.feishu_events import build_event_dispatcher
 from feishubot.ai.prompts import build_system_prompt
 from feishubot.ai.providers import ModelProvider, create_provider
 from feishubot.ai.tools import ToolRuntime
+from feishubot.channel import Channel, create_default_channel
 from feishubot.config import settings
-from feishubot.feishu import FeishuClient
 
 app = FastAPI(title="FeishuBot", version="0.1.0")
 
-feishu_client = FeishuClient(
-    app_id=settings.feishu_app_id,
-    app_secret=settings.feishu_app_secret,
-)
+channel_client: Channel = create_default_channel()
 feishu_event_dispatcher = build_event_dispatcher()
 
 
@@ -135,8 +132,9 @@ async def _extract_chat_request(request: Request) -> ChatRequest:
     return ChatRequest(message=message, user_id=user_id, system_prompt=system_prompt)
 
 
-def _ensure_feishu_configured() -> None:
-    if not settings.feishu_app_id or not settings.feishu_app_secret:
+def _ensure_default_channel_configured() -> None:
+    channel_name = settings.default_channel.strip().lower()
+    if channel_name == "feishu" and (not settings.feishu_app_id or not settings.feishu_app_secret):
         raise HTTPException(
             status_code=500,
             detail="FEISHU_APP_ID and FEISHU_APP_SECRET must be configured",
@@ -183,9 +181,9 @@ async def chat_with_llm(request: Request) -> ChatResponse:
 @app.post("/api/feishu/push")
 async def push_feishu_message(payload: FeishuPushRequest, request: Request) -> dict[str, Any]:
     _validate_internal_api_key(request)
-    _ensure_feishu_configured()
+    _ensure_default_channel_configured()
 
-    data = await feishu_client.send_text_message(
+    data = await channel_client.send_text_message(
         receive_id=payload.receive_id,
         text=payload.text,
         receive_id_type=payload.receive_id_type,
@@ -201,10 +199,10 @@ async def push_feishu_message(payload: FeishuPushRequest, request: Request) -> d
 @app.post("/api/feishu/relay")
 async def relay_feishu_message(payload: FeishuRelayRequest, request: Request) -> dict[str, Any]:
     _validate_internal_api_key(request)
-    _ensure_feishu_configured()
+    _ensure_default_channel_configured()
 
     llm_result = await _run_agent(payload.message, payload.user_id, payload.system_prompt)
-    data = await feishu_client.send_text_message(
+    data = await channel_client.send_text_message(
         receive_id=payload.receive_id,
         text=llm_result.reply,
         receive_id_type=payload.receive_id_type,
