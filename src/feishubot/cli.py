@@ -632,7 +632,10 @@ def _run_webhook_gateway(host: str, port: int, reload: bool) -> None:
 def _run_events(args: argparse.Namespace) -> None:
     import lark_oapi as lark
 
-    from feishubot.ai.orchestrator.feishu_events import build_event_dispatcher
+    from feishubot.ai.orchestrator.feishu_events import (
+        build_event_dispatcher,
+        start_event_worker_loop,
+    )
 
     if not settings.feishu_app_id or not settings.feishu_app_secret:
         print("FEISHU_APP_ID and FEISHU_APP_SECRET are required for long connection mode.")
@@ -651,6 +654,7 @@ def _run_events(args: argparse.Namespace) -> None:
     print("Fallback policy: webhook gateway will start if long connection is unavailable.")
     print("Press Ctrl+C to stop.")
 
+    start_event_worker_loop()
     client = lark.ws.Client(
         settings.feishu_app_id,
         settings.feishu_app_secret,

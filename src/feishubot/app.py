@@ -19,8 +19,15 @@ from feishubot.config import settings
 
 app = FastAPI(title="FeishuBot", version="0.1.0")
 
-channel_client: Channel = create_default_channel()
+channel_client: Channel | None = None
 feishu_event_dispatcher = build_event_dispatcher()
+
+
+def _get_channel_client() -> Channel:
+    global channel_client
+    if channel_client is None:
+        channel_client = create_default_channel()
+    return channel_client
 
 
 def get_model_provider() -> ModelProvider:
@@ -144,7 +151,12 @@ def _ensure_default_channel_configured() -> None:
 def _validate_internal_api_key(request: Request) -> None:
     expected_api_key = settings.gateway_internal_api_key.strip()
     if not expected_api_key:
-        return
+        if settings.app_env.strip().lower() == "dev":
+            return
+        raise HTTPException(
+            status_code=500,
+            detail="GATEWAY_INTERNAL_API_KEY must be configured outside dev environment",
+        )
 
     provided_api_key = request.headers.get("x-api-key", "").strip()
     if provided_api_key != expected_api_key:
@@ -183,7 +195,7 @@ async def push_feishu_message(payload: FeishuPushRequest, request: Request) -> d
     _validate_internal_api_key(request)
     _ensure_default_channel_configured()
 
-    data = await channel_client.send_text_message(
+    data = await _get_channel_client().send_text_message(
         receive_id=payload.receive_id,
         text=payload.text,
         receive_id_type=payload.receive_id_type,
@@ -202,7 +214,7 @@ async def relay_feishu_message(payload: FeishuRelayRequest, request: Request) ->
     _ensure_default_channel_configured()
 
     llm_result = await _run_agent(payload.message, payload.user_id, payload.system_prompt)
-    data = await channel_client.send_text_message(
+    data = await _get_channel_client().send_text_message(
         receive_id=payload.receive_id,
         text=llm_result.reply,
         receive_id_type=payload.receive_id_type,
@@ -221,7 +233,7 @@ async def relay_feishu_message(payload: FeishuRelayRequest, request: Request) ->
     }
 
 
-@app.post("/webhook/feishu/events")
+@app.post("/webhook/feishu/events", response_model=None)
 async def handle_feishu_events(request: Request) -> Response | dict[str, str]:
     body = await request.body()
     if not body:

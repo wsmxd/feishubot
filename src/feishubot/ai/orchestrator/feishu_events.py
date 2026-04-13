@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import threading
 from typing import Any
 
 import lark_oapi as lark
@@ -16,7 +17,51 @@ from feishubot.config import settings
 
 logger = logging.getLogger(__name__)
 
-channel_client: Channel = create_default_channel()
+channel_client: Channel | None = None
+_event_worker_loop: asyncio.AbstractEventLoop | None = None
+_event_worker_thread: threading.Thread | None = None
+
+
+def _get_channel_client() -> Channel:
+    global channel_client
+    if channel_client is None:
+        channel_client = create_default_channel()
+    return channel_client
+
+
+def start_event_worker_loop() -> None:
+    global _event_worker_loop, _event_worker_thread
+    if _event_worker_loop is not None:
+        return
+
+    loop = asyncio.new_event_loop()
+
+    def _run_loop() -> None:
+        asyncio.set_event_loop(loop)
+        loop.run_forever()
+
+    thread = threading.Thread(target=_run_loop, name="feishu-event-worker", daemon=True)
+    thread.start()
+    _event_worker_loop = loop
+    _event_worker_thread = thread
+
+
+def _submit_event_task(coro: Any) -> None:
+    if _event_worker_loop is None:
+        start_event_worker_loop()
+
+    if _event_worker_loop is None:
+        raise RuntimeError("event worker loop failed to start")
+
+    future = asyncio.run_coroutine_threadsafe(coro, _event_worker_loop)
+
+    def _log_task_result(completed_future: Any) -> None:
+        try:
+            completed_future.result()
+        except Exception:  # noqa: BLE001
+            logger.exception("failed to handle feishu message event")
+
+    future.add_done_callback(_log_task_result)
 
 
 def _extract_text(raw_content: Any) -> str | None:
@@ -71,30 +116,16 @@ async def process_p2_im_message_receive_v1(data: lark.im.v1.P2ImMessageReceiveV1
 
     reply = await _run_agent(text, user_open_id)
     if chat_id:
-        await channel_client.send_text_message(
+        await _get_channel_client().send_text_message(
             receive_id=chat_id,
             text=reply,
             receive_id_type="chat_id",
         )
 
 
-def _log_background_task_result(task: asyncio.Task[Any]) -> None:
-    try:
-        task.result()
-    except Exception:  # noqa: BLE001
-        logger.exception("failed to handle feishu message event")
-
-
 def on_p2_im_message_receive_v1(data: lark.im.v1.P2ImMessageReceiveV1) -> None:
-    # Event callbacks must return quickly; process message async to avoid retry due to timeout.
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        logger.error("no running event loop, skip feishu message event")
-        return
-
-    task = loop.create_task(process_p2_im_message_receive_v1(data))
-    task.add_done_callback(_log_background_task_result)
+    # Event callbacks must return quickly; process message in the dedicated worker loop.
+    _submit_event_task(process_p2_im_message_receive_v1(data))
 
 
 def build_event_dispatcher(
