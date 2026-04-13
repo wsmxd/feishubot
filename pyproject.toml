@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "FeishuBot"
+name = "MA-Agent"
 version = "0.1.1"
 description = "Feishu-focused bot service with pluggable LLM backend"
 readme = "README.md"

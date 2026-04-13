@@ -1,4 +1,4 @@
-# FeishuBot
+# MA-Agent
 
 一个专注于飞书生态的 Python Bot 项目骨架，建议按「先终端、后飞书」顺序推进：
 
@@ -39,13 +39,13 @@ feishubot/
 
 ```bash
 # 1) 先执行交互式配置（会写入 ~/.feishubot/.env）
-uvx --from FeishuBot feishubot setup
+uvx --from MA-Agent feishubot setup
 
 # 2) 直接启动终端对话
-uvx --from FeishuBot feishubot chat
+uvx --from MA-Agent feishubot chat
 
 # 3) 或启动网关
-uvx --from FeishuBot feishubot gateway --host 0.0.0.0 --port 8000
+uvx --from MA-Agent feishubot gateway --host 0.0.0.0 --port 8000
 ```
 
 配置文件说明：
@@ -56,7 +56,7 @@ uvx --from FeishuBot feishubot gateway --host 0.0.0.0 --port 8000
 - 可通过 `FEISHUBOT_ENV_FILE` 显式指定环境文件：
 
 ```bash
-FEISHUBOT_ENV_FILE=~/work/feishubot/.env uvx --from FeishuBot feishubot chat
+FEISHUBOT_ENV_FILE=~/work/feishubot/.env uvx --from MA-Agent feishubot chat
 ```
 
 一键下载并运行（推荐）：
