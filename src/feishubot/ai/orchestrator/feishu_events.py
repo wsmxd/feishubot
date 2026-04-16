@@ -248,9 +248,12 @@ async def process_p2_im_message_receive_v1(data: lark.im.v1.P2ImMessageReceiveV1
                 logger.exception(f"Failed to process image message: {e}")
                 # Send error message
                 try:
+                    user_error_message = "图片处理失败，请稍后重试。"
+                    if message_id:
+                        user_error_message = f"{user_error_message} 消息ID: {message_id}"
                     await _get_channel_client().send_text_message(
                         receive_id=chat_id,
-                        text=f"图片处理失败: {str(e)}",
+                        text=user_error_message,
                         receive_id_type="chat_id",
                     )
                     logger.debug(

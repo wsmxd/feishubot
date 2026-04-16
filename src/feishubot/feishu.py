@@ -15,6 +15,8 @@ from lark_oapi.api.im.v1 import (
     GetMessageResourceRequest,
 )
 
+from feishubot.config import settings
+
 
 class FeishuClient:
     def __init__(self, app_id: str, app_secret: str) -> None:
@@ -149,19 +151,19 @@ class FeishuClient:
         if not response.success() or response.file is None:
             status_code = response.raw.status_code if response.raw is not None else None
             raise RuntimeError(
-                "failed to download feishu image resource: "
+                f"failed to download feishu {resource_type} resource: "
                 f"status={status_code}, code={response.code}, msg={response.msg}, "
                 f"log_id={response.get_log_id()}, message_id={message_id}, file_key={file_key}"
             )
 
-        image_bytes = response.file.read()
-        if not image_bytes:
+        resource_bytes = response.file.read()
+        if not resource_bytes:
             raise RuntimeError(
-                "failed to download feishu image resource: empty file content, "
+                f"failed to download feishu {resource_type} resource: empty file content, "
                 f"message_id={message_id}, file_key={file_key}"
             )
 
-        return image_bytes
+        return resource_bytes
 
     async def get_message_image_base64(self, *, message_id: str, file_key: str) -> str:
         image_bytes = await self.get_message_resource(
@@ -177,6 +179,11 @@ class FeishuClient:
             file_key=file_key,
             resource_type="image",
         )
+        if len(image_bytes) > settings.llm_image_max_bytes:
+            raise RuntimeError(
+                "image too large for model request: "
+                f"size={len(image_bytes)} bytes, limit={settings.llm_image_max_bytes} bytes"
+            )
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
         image_mime = self._detect_image_mime(image_bytes)
         return f"data:{image_mime};base64,{image_b64}"
