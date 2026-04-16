@@ -7,7 +7,7 @@ from typing import Any
 @dataclass(slots=True)
 class ChatMessage:
     role: str
-    content: str
+    content: Any
 
 
 @dataclass(slots=True)
