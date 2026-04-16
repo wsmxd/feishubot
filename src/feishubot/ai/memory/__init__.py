@@ -1,4 +1,10 @@
 from .session import SensitiveInfoDetector, Session, SessionManager
-from .store import MemoryStore
+from .store import JsonlMemoryStore, MemoryStore
 
-__all__ = ["Session", "SessionManager", "SensitiveInfoDetector", "MemoryStore"]
+__all__ = [
+    "Session",
+    "SessionManager",
+    "SensitiveInfoDetector",
+    "MemoryStore",
+    "JsonlMemoryStore",
+]

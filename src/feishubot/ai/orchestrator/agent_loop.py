@@ -90,6 +90,21 @@ class AgentLoop:
         if self._system_prompt:
             messages.append(ChatMessage(role="system", content=self._system_prompt))
 
+        if user_id:
+            retrieved = self._session_manager.retrieve_memories(
+                user_id=user_id, query=prompt, top_k=6
+            )
+            if retrieved:
+                memory_text = "\n".join(f"- {item}" for item in retrieved)
+                messages.append(
+                    ChatMessage(
+                        role="system",
+                        content=(
+                            f"Relevant memory snippets from previous interactions:\n{memory_text}"
+                        ),
+                    )
+                )
+
         # 添加历史消息到会话
         if user_id:
             history = self._session_manager.get_history(user_id)

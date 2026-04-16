@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -9,6 +10,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from feishubot.ai.memory.store import JsonlMemoryStore, MemoryStore
 from feishubot.ai.utils.path_utils import PathUtils
 
 logger = logging.getLogger(__name__)
@@ -153,7 +155,12 @@ class Session:
 
 
 class SessionManager:
-    def __init__(self, max_history: int = 50, store_sensitive: bool = False):
+    def __init__(
+        self,
+        max_history: int = 50,
+        store_sensitive: bool = False,
+        store: MemoryStore | None = None,
+    ):
         """Initialize SessionManager with path management and security features."""
         # Resolve history directory path
         self.history_dir = self._resolve_history_dir()
@@ -163,6 +170,7 @@ class SessionManager:
 
         # Create history directory with proper permissions
         self._create_history_dir()
+        self._store: MemoryStore = store or JsonlMemoryStore(base_dir=self.history_dir)
 
     def _resolve_history_dir(self) -> Path:
         """Resolve history directory path to ensure consistency."""
@@ -173,6 +181,36 @@ class SessionManager:
         resolved_path = path.resolve()
         logger.info(f"Resolved history directory: {resolved_path}")
         return resolved_path
+
+    def _jsonl_path(self, date_str: str) -> Path:
+        return self.history_dir / f"{date_str}.jsonl"
+
+    def _append_jsonl_record(self, record: dict[str, Any]) -> None:
+        timestamp = record.get("timestamp")
+        if isinstance(timestamp, str) and len(timestamp) >= 10:
+            date_str = timestamp[:10]
+        else:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+
+        line = json.dumps(record, ensure_ascii=False)
+        with _file_lock:
+            self._store.append(date_str, line)
+
+    @staticmethod
+    def _parse_timestamp(raw: Any) -> datetime | None:
+        if not isinstance(raw, str) or not raw.strip():
+            return None
+        value = raw.strip()
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            pass
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(value, fmt)
+            except ValueError:
+                continue
+        return None
 
     def _is_expected_history_dir(self, path: Path) -> bool:
         """校验路径是否为预期的 ~/.feishubot 会话目录
@@ -307,6 +345,72 @@ class SessionManager:
     def _load(self, user_id: str) -> Session | None:
         """Load a session from disk."""
         try:
+            # Prefer structured JSONL records for reliable parsing.
+            jsonl_files = list(self.history_dir.glob("*.jsonl"))
+            jsonl_files.sort(reverse=True)
+            messages: list[dict[str, Any]] = []
+            created_at: datetime | None = None
+
+            for file_path in jsonl_files:
+                try:
+                    date_key = file_path.stem
+                    lines = self._store.read(date_key)
+                    for line in lines:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            record = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+
+                        if not isinstance(record, dict):
+                            continue
+                        if record.get("user_id") != user_id:
+                            continue
+
+                        role = record.get("role")
+                        if not isinstance(role, str) or not role:
+                            continue
+
+                        content = record.get("content", "")
+                        if not isinstance(content, str):
+                            content = json.dumps(content, ensure_ascii=False)
+
+                        timestamp = record.get("timestamp")
+                        message: dict[str, Any] = {
+                            "role": role,
+                            "content": content,
+                            "timestamp": timestamp if isinstance(timestamp, str) else "",
+                        }
+                        kind = record.get("kind")
+                        if isinstance(kind, str) and kind:
+                            message["kind"] = kind
+                        meta = record.get("metadata")
+                        if isinstance(meta, dict) and meta:
+                            message["metadata"] = meta
+
+                        ts = self._parse_timestamp(message.get("timestamp"))
+                        if ts and (created_at is None or ts < created_at):
+                            created_at = ts
+
+                        messages.append(message)
+                except Exception as e:
+                    logger.error(f"Error loading jsonl history from {file_path}: {e}")
+                    continue
+
+            if messages:
+                messages.sort(
+                    key=lambda m: self._parse_timestamp(m.get("timestamp")) or datetime.min
+                )
+                return Session(
+                    key=user_id,
+                    messages=messages,
+                    created_at=created_at or datetime.now(),
+                    last_consolidated=len(messages),
+                )
+
+            # Fallback to legacy markdown format for backward compatibility.
             history_files = list(self.history_dir.glob("*.md"))
             history_files.sort(reverse=True)
 
@@ -406,6 +510,29 @@ class SessionManager:
                 )
                 raise
 
+            # Structured record append (preferred runtime format).
+            now_iso = datetime.now().isoformat()
+            self._append_jsonl_record(
+                {
+                    "timestamp": now_iso,
+                    "user_id": user_id,
+                    "role": "user",
+                    "content": user_input,
+                    "kind": "chat",
+                    "metadata": dict(kwargs),
+                }
+            )
+            self._append_jsonl_record(
+                {
+                    "timestamp": now_iso,
+                    "user_id": user_id,
+                    "role": "assistant",
+                    "content": bot_response,
+                    "kind": "chat",
+                    "metadata": dict(kwargs),
+                }
+            )
+
             # Update session in cache
             session = self.get_or_create(user_id)
             session.add_message("user", user_input, **kwargs)
@@ -419,6 +546,40 @@ class SessionManager:
             import traceback
 
             logger.error(f"Error traceback: {traceback.format_exc()}")
+            return False
+
+    def save_memory_event(
+        self,
+        *,
+        user_id: str,
+        role: str,
+        content: str,
+        kind: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> bool:
+        """Persist a structured memory event for retrieval and session continuity."""
+        try:
+            event_content = content
+            if not self.store_sensitive and SensitiveInfoDetector.detect(event_content):
+                event_content = SensitiveInfoDetector.sanitize(event_content)
+
+            timestamp = datetime.now().isoformat()
+            record = {
+                "timestamp": timestamp,
+                "user_id": user_id,
+                "role": role,
+                "content": event_content,
+                "kind": kind,
+                "metadata": metadata or {},
+            }
+            self._append_jsonl_record(record)
+
+            session = self.get_or_create(user_id)
+            session.add_message(role, event_content, kind=kind, metadata=metadata or {})
+            session.retain_recent_legal_suffix(self.max_history)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save memory event for user {user_id}: {e}")
             return False
 
     def show_chat_history(self, user_id: str, date_filter: str | None = None) -> None:
@@ -495,6 +656,45 @@ class SessionManager:
             return session.get_history(max_messages or self.max_history)
         except Exception as e:
             logger.error(f"Error getting history for user {user_id}: {e}")
+            return []
+
+    def retrieve_memories(self, user_id: str, query: str, top_k: int = 6) -> list[str]:
+        """Retrieve memory snippets by simple lexical overlap + recency.
+
+        This is a stage-1 lightweight retriever that can later be swapped for vectors.
+        """
+        try:
+            session = self.get_or_create(user_id)
+            query_tokens = set(re.findall(r"\w+", query.lower()))
+            if not query_tokens:
+                return []
+
+            scored: list[tuple[float, str]] = []
+            now = datetime.now()
+            for msg in session.messages:
+                content = msg.get("content", "")
+                if not isinstance(content, str) or not content.strip():
+                    continue
+
+                content_tokens = set(re.findall(r"\w+", content.lower()))
+                overlap = len(query_tokens & content_tokens)
+                if overlap <= 0:
+                    continue
+
+                ts = self._parse_timestamp(msg.get("timestamp"))
+                age_hours = (now - ts).total_seconds() / 3600.0 if ts else 24 * 365
+                recency = 1.0 / (1.0 + age_hours / 24.0)
+                score = float(overlap) + recency
+
+                snippet = content.strip().replace("\n", " ")
+                if len(snippet) > 280:
+                    snippet = snippet[:280] + "..."
+                scored.append((score, snippet))
+
+            scored.sort(key=lambda x: x[0], reverse=True)
+            return [item[1] for item in scored[:top_k]]
+        except Exception as e:
+            logger.error(f"Error retrieving memories for user {user_id}: {e}")
             return []
 
     def clear_history(self, user_id: str) -> bool:

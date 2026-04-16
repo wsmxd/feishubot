@@ -10,6 +10,7 @@ import httpx
 import lark_oapi as lark
 
 from feishubot.ai.core.schemas import ChatMessage
+from feishubot.ai.memory import SessionManager
 from feishubot.ai.orchestrator.agent_loop import AgentLoop
 from feishubot.ai.prompts import build_system_prompt
 from feishubot.ai.providers import create_active_provider
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 channel_client: Channel | None = None
 _event_worker_loop: asyncio.AbstractEventLoop | None = None
 _event_worker_thread: threading.Thread | None = None
+_memory_manager: SessionManager | None = None
 
 
 def _get_channel_client() -> Channel:
@@ -32,6 +34,13 @@ def _get_channel_client() -> Channel:
         channel_client = create_default_channel()
         logger.debug(f"Channel client ready: type={type(channel_client).__name__}")
     return channel_client
+
+
+def _get_memory_manager() -> SessionManager:
+    global _memory_manager
+    if _memory_manager is None:
+        _memory_manager = SessionManager(max_history=50, store_sensitive=False)
+    return _memory_manager
 
 
 def start_event_worker_loop() -> None:
@@ -244,6 +253,21 @@ async def process_p2_im_message_receive_v1(data: lark.im.v1.P2ImMessageReceiveV1
                     receive_id_type="chat_id",
                 )
                 logger.info(f"Image analysis reply sent for message_id={message_id}")
+
+                if user_open_id:
+                    summary = f"Image analysis result: {reply.strip()}"
+                    _get_memory_manager().save_memory_event(
+                        user_id=user_open_id,
+                        role="assistant",
+                        content=summary,
+                        kind="image_analysis",
+                        metadata={
+                            "message_id": message_id,
+                            "chat_id": chat_id,
+                            "file_key": file_key,
+                            "source": "feishu_image",
+                        },
+                    )
             except Exception as e:
                 logger.exception(f"Failed to process image message: {e}")
                 # Send error message
