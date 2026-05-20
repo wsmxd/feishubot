@@ -1,0 +1,14 @@
+# MCP server configuration for feishubot.
+# Each server entry defines a connection to an external MCP server.
+# Supported transport types: "stdio" (subprocess) and "streamable_http" (HTTP).
+#
+# Example: filesystem server via stdio
+# [mcp_servers.filesystem]
+# transport = "stdio"
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+#
+# Example: remote server via streamable HTTP
+# [mcp_servers.remote_api]
+# transport = "streamable_http"
+# url = "http://localhost:8000/mcp"

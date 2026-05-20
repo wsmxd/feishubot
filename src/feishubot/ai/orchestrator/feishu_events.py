@@ -61,6 +61,26 @@ def start_event_worker_loop() -> None:
     _event_worker_thread = thread
     logger.info("Started event worker loop thread: feishu-event-worker")
 
+    _init_mcp_in_worker(loop)
+
+
+def _init_mcp_in_worker(loop: asyncio.AbstractEventLoop) -> None:
+    from feishubot.ai.mcp import init_mcp_tools
+
+    future = asyncio.run_coroutine_threadsafe(init_mcp_tools(), loop)
+
+    def _log_mcp_init_result(completed_future: Any) -> None:
+        try:
+            client = completed_future.result()
+            if client.connected:
+                logger.info("MCP client initialized successfully in event worker")
+            else:
+                logger.info("MCP client not connected (no servers configured)")
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to initialize MCP client in event worker")
+
+    future.add_done_callback(_log_mcp_init_result)
+
 
 def _submit_event_task(coro: Any) -> None:
     if _event_worker_loop is None:

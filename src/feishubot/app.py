@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+from contextlib import asynccontextmanager
 from typing import Any
 from urllib.parse import parse_qs
 
@@ -17,7 +19,28 @@ from feishubot.ai.tools import ToolRuntime
 from feishubot.channel import Channel, create_default_channel
 from feishubot.config import settings
 
-app = FastAPI(title="FeishuBot", version="0.1.0")
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):  # noqa: ARG001
+    from feishubot.ai.mcp import init_mcp_tools
+
+    try:
+        await init_mcp_tools()
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to initialize MCP client on startup")
+    yield
+    from feishubot.ai.mcp import get_mcp_client
+
+    try:
+        client = get_mcp_client()
+        await client.disconnect()
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to disconnect MCP client on shutdown")
+
+
+app = FastAPI(title="FeishuBot", version="0.1.0", lifespan=_lifespan)
 
 channel_client: Channel | None = None
 feishu_event_dispatcher = build_event_dispatcher()
