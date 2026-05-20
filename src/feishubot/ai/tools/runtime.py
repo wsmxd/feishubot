@@ -135,7 +135,15 @@ class ToolRuntime:
     def _is_tool_enabled(self, name: str) -> bool:
         if self._enabled_tools is None:
             return True
-        return name in self._enabled_tools
+        if name in self._enabled_tools:
+            return True
+        tool = tool_registry.get(name)
+        if tool is not None:
+            from feishubot.ai.mcp.bridge import McpToolBridge
+
+            if isinstance(tool, McpToolBridge):
+                return True
+        return False
 
     def available_tools(self) -> list[Tool]:
         tools: list[Tool] = []

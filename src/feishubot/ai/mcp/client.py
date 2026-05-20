@@ -8,10 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from mcp import ClientSessionGroup, StdioServerParameters
-from mcp.client.session_group import (
-    SseServerParameters,
-    StreamableHttpParameters,
-)
+from mcp.client.session_group import SseServerParameters, StreamableHttpParameters
 
 from feishubot.config import settings
 
@@ -138,7 +135,11 @@ class MCPClient:
                 elif server_config.transport in {"sse", "http"}:
                     await self._connect_sse(server_config)
             except Exception:  # noqa: BLE001
-                logger.exception(f"Failed to connect to MCP server '{server_name}'")
+                logger.exception(
+                    f"Failed to connect to MCP server '{server_name}' "
+                    f"(transport={server_config.transport}, "
+                    f"url={server_config.url or server_config.command})"
+                )
 
         connected_count = len(self._group.tools) if self._group else 0
         if connected_count > 0:
