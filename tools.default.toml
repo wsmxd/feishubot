@@ -1,6 +1,6 @@
 # `soul_memory` is enabled by default to persist stable user profile facts
 # (name, habits, hobbies, preferences) into SOUL.md for better continuity.
-enabled_tools = ["web_search", "calculator", "terminal", "soul_memory"]
+enabled_tools = ["web_search", "calculator", "terminal", "soul_memory", "save_image"]
 
 [routing.web_search]
 timeout_seconds = 20
@@ -13,6 +13,9 @@ timeout_seconds = 30
 
 [routing.soul_memory]
 timeout_seconds = 5
+
+[routing.save_image]
+timeout_seconds = 10
 
 [terminal]
 blocked_commands = [

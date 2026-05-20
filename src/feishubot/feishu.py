@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 from io import IOBase
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -201,3 +203,43 @@ class FeishuClient:
             return "image/gif"
         # Fallback for providers that expect an image/* MIME type.
         return "image/png"
+
+    @staticmethod
+    def _mime_to_extension(mime: str) -> str:
+        return {
+            "image/png": ".png",
+            "image/jpeg": ".jpg",
+            "image/webp": ".webp",
+            "image/gif": ".gif",
+        }.get(mime, ".png")
+
+    @staticmethod
+    def _resolve_image_local_dir() -> Path:
+        configured = settings.image_local_dir.strip()
+        if configured:
+            return Path(configured).expanduser().resolve()
+        return Path.home() / ".feishubot" / "images"
+
+    async def save_message_image_to_local(
+        self, *, message_id: str, file_key: str, filename: str | None = None
+    ) -> str:
+        image_bytes = await self.get_message_resource(
+            message_id=message_id,
+            file_key=file_key,
+            resource_type="image",
+        )
+        mime = self._detect_image_mime(image_bytes)
+        ext = self._mime_to_extension(mime)
+        save_dir = self._resolve_image_local_dir()
+        os.makedirs(save_dir, exist_ok=True)
+
+        from feishubot.ai.tools.builtins.save_image import evict_oldest_images
+
+        evict_oldest_images(save_dir, settings.image_local_max_count)
+
+        if filename:
+            save_path = save_dir / filename
+        else:
+            save_path = save_dir / f"{message_id}_{file_key}{ext}"
+        save_path.write_bytes(image_bytes)
+        return str(save_path)

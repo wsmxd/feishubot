@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     llm_models_config_path: str = ""
     ai_tools_config_path: str = ""
     llm_image_max_bytes: int = 5 * 1024 * 1024
+    image_local_dir: str = ""
+    image_local_max_count: int = 30
 
     def _load_models_from_toml(self, config_path: Path) -> tuple[str, dict[str, dict[str, Any]]]:
         if not config_path.exists():

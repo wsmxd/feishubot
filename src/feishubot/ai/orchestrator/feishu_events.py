@@ -228,6 +228,12 @@ async def process_p2_im_message_receive_v1(data: lark.im.v1.P2ImMessageReceiveV1
                 if not isinstance(channel_client, FeishuChannel):
                     raise RuntimeError("image analysis only supports FeishuChannel")
 
+                local_image_path = await channel_client.save_message_image_to_local(
+                    message_id=message_id,
+                    file_key=file_key,
+                )
+                logger.info(f"Image saved to local file: {local_image_path}")
+
                 image_data_url = await channel_client.get_message_image_data_url(
                     message_id=message_id,
                     file_key=file_key,
@@ -266,6 +272,7 @@ async def process_p2_im_message_receive_v1(data: lark.im.v1.P2ImMessageReceiveV1
                             "chat_id": chat_id,
                             "file_key": file_key,
                             "source": "feishu_image",
+                            "local_image_path": local_image_path,
                         },
                     )
             except Exception as e:

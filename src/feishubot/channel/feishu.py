@@ -42,3 +42,12 @@ class FeishuChannel(Channel):
             message_id=message_id,
             file_key=file_key,
         )
+
+    async def save_message_image_to_local(
+        self, *, message_id: str, file_key: str, filename: str | None = None
+    ) -> str:
+        return await self._client.save_message_image_to_local(
+            message_id=message_id,
+            file_key=file_key,
+            filename=filename,
+        )

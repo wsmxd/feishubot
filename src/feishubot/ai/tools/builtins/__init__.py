@@ -1,4 +1,5 @@
 from feishubot.ai.tools.builtins.calculator import CalculatorTool
+from feishubot.ai.tools.builtins.save_image import SaveImageTool
 from feishubot.ai.tools.builtins.soul import SoulMemoryTool
 from feishubot.ai.tools.builtins.terminal import TerminalCommandTool
 from feishubot.ai.tools.builtins.web_search import WebSearchTool
@@ -8,6 +9,8 @@ from feishubot.ai.tools.registry import tool_registry
 def register_builtin_tools() -> None:
     if tool_registry.get(CalculatorTool.name) is None:
         tool_registry.register(CalculatorTool.name, CalculatorTool())
+    if tool_registry.get(SaveImageTool.name) is None:
+        tool_registry.register(SaveImageTool.name, SaveImageTool())
     if tool_registry.get(TerminalCommandTool.name) is None:
         tool_registry.register(TerminalCommandTool.name, TerminalCommandTool())
     if tool_registry.get(SoulMemoryTool.name) is None:
@@ -18,6 +21,7 @@ def register_builtin_tools() -> None:
 
 __all__ = [
     "CalculatorTool",
+    "SaveImageTool",
     "SoulMemoryTool",
     "TerminalCommandTool",
     "WebSearchTool",
